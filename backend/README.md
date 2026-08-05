@@ -1,6 +1,6 @@
 # Backend API
 
-A RESTful API for managing and interacting with the rocket's mcu.
+(Soon to be) A RESTful API for managing and interacting with the rocket's mcu.
 
 ## Prerequisites
 
@@ -25,9 +25,9 @@ A RESTful API for managing and interacting with the rocket's mcu.
     docker compose up
     ```
 
-    > [!NOTE]
-    >
-    > If you want to run it interactively, you can use:
-    > ```sh
-    > docker compose run --rm -it backend
-    > ```
+> [!TIP]
+>
+> If you want to run it interactively, you can use:
+> ```sh
+> docker compose run --rm -it backend
+> ```
