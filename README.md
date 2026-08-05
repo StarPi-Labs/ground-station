@@ -1,3 +1,25 @@
+# Ground Station Software
+
+This repository contains all software components of the ground station.
+
+## Hardware
+
+This project uses:
+- [Raspberry Pi 4](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) as the main computer
+- LoRa module hat for communication with rocket mcu
+- (TODO): An HDMI monitor for quick data visualization and debugging
+
+## Software
+
+The software stack involves the following components:
+- [Open MCT](https://nasa.github.io/openmct/) for telemetry visualization
+- Python backend for data processing and communication with the LoRa module and Bluetooth LE
+- (Potentially) SQLite database for data storage and retrieval
+
+> [!NOTE]
+> Below is the README from the Open MCT QuickStart repository (since this is a fork).
+> It will eventually modifed/removed.
+
 # Open MCT QuickStart
 
 This repository contains a quick way to get started with Open MCT, integrated with:
