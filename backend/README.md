@@ -4,8 +4,9 @@
 
 ## Prerequisites
 
-* Docker >= 29.*: for running the backend.
+* Docker >= 29.*: for running the backend in a container.
 * BlueZ >= 5.55: for Bluetooth communication with the mcu.
+* Make: for building/running.
 
 ## Getting Started
 
@@ -15,19 +16,12 @@
     cd ground-station/backend
     ```
 
-2. Build the Docker image:
+2. Build:
     ```sh
-    docker build -t StarPi/gs-backend .
+    make build
     ```
 
-3. Run the Docker container:
+2. Run
     ```sh
-    docker compose up
+    make run
     ```
-
-> [!TIP]
->
-> If you want to run it interactively, you can use:
-> ```sh
-> docker compose run --rm -it backend
-> ```
