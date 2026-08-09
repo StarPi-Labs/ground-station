@@ -14,4 +14,4 @@ run: setup-bl
 		$(TAG):$(VERSION)
 
 setup-bl:
-	./scripts/setup-bluetooth.sh
+	sh ./scripts/setup-bluetooth.sh
