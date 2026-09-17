@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StarPi Ground Station</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --panel-2: #1e242c;
+    --line: #2a323c;
+    --text: #e6edf3;
+    --muted: #8b97a6;
+    --accent: #4fc3f7;
+    --ok: #4caf50;
+    --warn: #ffb300;
+    --bad: #ef5350;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-size: 14px; line-height: 1.45;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 10;
+  }
+  h1 { font-size: 16px; margin: 0; letter-spacing: .5px; }
+  h2 { font-size: 12px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .spacer { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    font-size: 12px; color: var(--muted);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+  .dot.on { background: var(--ok); }
+  .dot.idle { background: var(--warn); }
+
+  main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 1fr; max-width: 1400px; margin: 0 auto; }
+  @media (min-width: 1000px) { main { grid-template-columns: 2fr 1fr; } }
+
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .col { display: grid; gap: 20px; align-content: start; }
+
+  .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .tile { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .tile .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .tile .value { font-size: 19px; margin-top: 6px; word-break: break-word; }
+  .tile .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .tile.stale { opacity: .45; }
+
+  canvas { width: 100%; height: 130px; display: block; background: var(--panel-2);
+           border: 1px solid var(--line); border-radius: 8px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: normal; position: sticky; top: 0; background: var(--panel); }
+  td.payload { white-space: normal; word-break: break-word; }
+  .scroll { max-height: 380px; overflow: auto; }
+  tr.new td { animation: flash .8s ease-out; }
+  @keyframes flash { from { background: rgba(79,195,247,.18); } to { background: transparent; } }
+
+  .log { max-height: 200px; overflow: auto; font-size: 12px; }
+  .log div { padding: 2px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+  .log .t { color: var(--accent); }
+
+  button, select, input {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button.danger { color: var(--bad); border-color: #4a2a2a; }
+  button.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); background: #2a1a1a; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .status { font-size: 12px; color: var(--muted); min-height: 18px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--bad); }
+  code { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚀 StarPi Ground Station</h1>
+  <span class="pill"><span id="ws-dot" class="dot"></span><span id="ws-text">websocket: connecting…</span></span>
+  <span class="pill" id="links-pill"><span id="link-dot" class="dot"></span><span id="link-text">link: —</span></span>
+  <div class="spacer"></div>
+  <span class="pill"><span id="rate">0</span> pkt/s &middot; <span id="total">0</span> stored</span>
+</header>
+
+<main>
+  <div class="col">
+    <section>
+      <h2>Live telemetry</h2>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <section>
+      <h2>Altitude (m)</h2>
+      <canvas id="chart" width="900" height="130"></canvas>
+    </section>
+
+    <section>
+      <h2>Packets</h2>
+      <div class="row">
+        <select id="filter-type"><option value="">all types</option></select>
+        <select id="filter-src"><option value="">all sources</option></select>
+        <button id="reload">Reload from database</button>
+        <button id="pause">Pause live</button>
+        <button id="clear" class="danger">Clear store</button>
+      </div>
+      <div class="status" id="store-status"></div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>#</th><th>time</th><th>source</th><th>type</th><th>payload type</th><th>payload</th><th>link</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="col">
+    <section>
+      <h2>Command uplink</h2>
+      <div class="row">
+        <select id="cmd-name"></select>
+      </div>
+      <div class="row">
+        <input id="cmd-args" placeholder='args as JSON, e.g. {"value": 1}' style="flex:1; min-width: 180px;">
+      </div>
+      <div class="row">
+        <button id="cmd-send">Send command</button>
+      </div>
+      <div class="status" id="cmd-status"></div>
+    </section>
+
+    <section>
+      <h2>Command history</h2>
+      <div class="scroll" style="max-height: 200px;">
+        <table>
+          <thead><tr><th>#</th><th>name</th><th>link</th><th>status</th></tr></thead>
+          <tbody id="cmd-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>System log (T_SYSLOG)</h2>
+      <div class="log" id="syslog"></div>
+    </section>
+
+    <section>
+      <h2>Counts by type</h2>
+      <table id="stats"></table>
+    </section>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+const API = "";                                   // same origin
+const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+
+// Human-readable labels for each message type, and how to render its payload.
+const TYPES = {
+  T_ACCELLERATION: { label: "Acceleration",  unit: "m/s²",  fmt: v => vec(v, 2) },
+  T_GYRO:          { label: "Gyroscope",     unit: "°/s",   fmt: v => vec(v, 1) },
+  T_ORIENTATION:   { label: "Orientation",   unit: "°",     fmt: v => vec(v, 1) },
+  T_ALT_SPEED:     { label: "Altitude / Speed", unit: "m, m/s",
+                     fmt: v => v && typeof v === "object" ? `${v.x.toFixed(1)} m · ${v.y.toFixed(1)} m/s` : String(v) },
+  T_PRESSURE:      { label: "Pressure",      unit: "hPa",   fmt: v => num(v, 2) },
+  T_TEMPERATURE:   { label: "Temperature",   unit: "°C",    fmt: v => num(v, 2) },
+  T_GPS:           { label: "GPS",           unit: "lat, lon",
+                     fmt: v => v && typeof v === "object" ? `${v.x.toFixed(5)}, ${v.y.toFixed(5)}` : String(v) },
+  T_SYSLOG:        { label: "Syslog",        unit: "",      fmt: v => String(v) },
+};
+
+const state = {
+  latest: {},          // type -> packet
+  paused: false,
+  rows: 0,
+  altitude: [],        // recent altitude samples for the chart
+  recentTimes: [],     // arrival timestamps, for the packet rate
+};
+
+// --- formatting ---------------------------------------------------------------
+
+const num = (v, digits = 3) => (typeof v === "number" ? v.toFixed(digits) : String(v));
+
+function vec(v, digits) {
+  if (v && typeof v === "object") {
+    return ["x", "y", "z"].filter(k => k in v).map(k => v[k].toFixed(digits)).join(", ");
+  }
+  return String(v);
+}
+
+function payloadText(packet) {
+  const spec = TYPES[packet.type];
+  if (packet.payload === null || packet.payload === undefined) return "—";
+  return spec ? spec.fmt(packet.payload) : JSON.stringify(packet.payload);
+}
+
+const clock = us => new Date(us / 1000).toLocaleTimeString([], { hour12: false }) +
+                    "." + String(Math.floor((us / 1000) % 1000)).padStart(3, "0");
+
+// --- tiles --------------------------------------------------------------------
+
+function renderTiles() {
+  const container = document.getElementById("tiles");
+  const now = Date.now();
+  container.innerHTML = "";
+
+  for (const [type, spec] of Object.entries(TYPES)) {
+    const packet = state.latest[type];
+    const tile = document.createElement("div");
+    const age = packet ? (now - packet.timestamp_us / 1000) / 1000 : Infinity;
+    tile.className = "tile" + (age > 5 ? " stale" : "");
+    tile.innerHTML = `
+      <div class="label">${spec.label}</div>
+      <div class="value">${packet ? payloadText(packet) : "—"}</div>
+      <div class="sub">${packet ? `${packet.src} · ${spec.unit || packet.payload_type}` : "no data"}</div>`;
+    container.appendChild(tile);
+  }
+}
+
+// --- altitude chart -----------------------------------------------------------
+
+function drawChart() {
+  const canvas = document.getElementById("chart");
+  const ctx = canvas.getContext("2d");
+  const { width: w, height: h } = canvas;
+  ctx.clearRect(0, 0, w, h);
+
+  const data = state.altitude;
+  if (data.length < 2) return;
+
+  const min = Math.min(...data), max = Math.max(...data);
+  const span = (max - min) || 1;
+  const y = v => h - 10 - ((v - min) / span) * (h - 24);
+
+  ctx.strokeStyle = "#4fc3f7";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = (i / (data.length - 1)) * (w - 4) + 2;
+    i === 0 ? ctx.moveTo(x, y(v)) : ctx.lineTo(x, y(v));
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = "#8b97a6";
+  ctx.font = "11px monospace";
+  ctx.fillText(max.toFixed(1), 6, 14);
+  ctx.fillText(min.toFixed(1), 6, h - 4);
+}
+
+// --- packet table -------------------------------------------------------------
+
+function addRow(packet, { live = true } = {}) {
+  const tbody = document.getElementById("rows");
+  const tr = document.createElement("tr");
+  if (live) tr.className = "new";
+  tr.innerHTML = `
+    <td>${packet.id ?? "—"}</td>
+    <td>${clock(packet.timestamp_us)}</td>
+    <td>${packet.src}</td>
+    <td>${packet.type}</td>
+    <td>${packet.payload_type}</td>
+    <td class="payload">${escapeHtml(payloadText(packet))}</td>
+    <td>${packet.link}</td>`;
+
+  if (live) tbody.prepend(tr); else tbody.appendChild(tr);
+  while (tbody.children.length > 300) tbody.removeChild(tbody.lastChild);
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// --- incoming packets ---------------------------------------------------------
+
+function onPacket(packet) {
+  state.latest[packet.type] = packet;
+
+  state.recentTimes.push(Date.now());
+  if (state.recentTimes.length > 500) state.recentTimes.shift();
+
+  if (packet.type === "T_ALT_SPEED" && packet.payload && typeof packet.payload === "object") {
+    state.altitude.push(packet.payload.x);
+    if (state.altitude.length > 240) state.altitude.shift();
+  }
+
+  if (packet.type === "T_SYSLOG") {
+    const log = document.getElementById("syslog");
+    const line = document.createElement("div");
+    line.innerHTML = `<span class="t">${clock(packet.timestamp_us)}</span> ${escapeHtml(String(packet.payload))}`;
+    log.prepend(line);
+    while (log.children.length > 100) log.removeChild(log.lastChild);
+  }
+
+  if (!state.paused && passesFilter(packet)) addRow(packet);
+}
+
+function passesFilter(packet) {
+  const type = document.getElementById("filter-type").value;
+  const src = document.getElementById("filter-src").value;
+  return (!type || packet.type === type) && (!src || packet.src === src);
+}
+
+// --- websocket ----------------------------------------------------------------
+
+let socket = null;
+
+function connect() {
+  socket = new WebSocket(WS_URL + "?backfill=25");
+
+  socket.onopen = () => setWs(true, "websocket: live");
+  socket.onclose = () => { setWs(false, "websocket: reconnecting…"); setTimeout(connect, 2000); };
+  socket.onerror = () => setWs(false, "websocket: error");
+
+  socket.onmessage = event => {
+    const message = JSON.parse(event.data);
+    if (message.event === "packet") onPacket(message.data);
+    else if (message.event === "hello") {
+      showLinks(message.data.links);
+      fillCommands(message.data.commands);
+      fillFilters(message.data.enums);
+    } else if (message.event === "command") loadCommands();
+    else if (message.event === "error") console.warn("bad frame:", message);
+  };
+}
+
+function setWs(connected, text) {
+  document.getElementById("ws-dot").className = "dot" + (connected ? " on" : "");
+  document.getElementById("ws-text").textContent = text;
+}
+
+function showLinks(links) {
+  const dot = document.getElementById("link-dot");
+  const text = document.getElementById("link-text");
+  if (!links || !links.length) { dot.className = "dot"; text.textContent = "link: none"; return; }
+  const up = links.filter(l => l.connected);
+  dot.className = "dot" + (up.length ? " on" : " idle");
+  text.textContent = "link: " + links.map(l => `${l.name}${l.connected ? "" : " (down)"}`).join(", ");
+  document.getElementById("links-pill").title =
+    links.map(l => `${l.name}: ${l.last_error || "ok"}`).join("\n");
+}
+
+// --- REST ---------------------------------------------------------------------
+
+async function api(path, options) {
+  const response = await fetch(API + path, options);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || response.statusText);
+  return body;
+}
+
+function fillFilters(enums) {
+  const fill = (id, entries) => {
+    const select = document.getElementById(id);
+    if (select.options.length > 1) return;
+    for (const entry of entries) {
+      const option = document.createElement("option");
+      option.value = option.textContent = entry.name;
+      select.appendChild(option);
+    }
+  };
+  fill("filter-type", enums.message_types);
+  fill("filter-src", enums.sources);
+}
+
+function fillCommands(commands) {
+  const select = document.getElementById("cmd-name");
+  if (select.options.length) return;
+  for (const command of commands) {
+    const option = document.createElement("option");
+    option.value = command.name;
+    option.textContent = `${command.name} (${command.link})`;
+    option.title = command.description;
+    select.appendChild(option);
+  }
+  if (!commands.length) {
+    select.innerHTML = "<option>no links available</option>";
+    document.getElementById("cmd-send").disabled = true;
+  }
+}
+
+async function loadPackets() {
+  const type = document.getElementById("filter-type").value;
+  const src = document.getElementById("filter-src").value;
+  const query = new URLSearchParams({ limit: "100", order: "desc" });
+  if (type) query.append("type", type);
+  if (src) query.append("src", src);
+
+  const page = await api("/api/packets?" + query);
+  document.getElementById("rows").innerHTML = "";
+  page.packets.forEach(packet => addRow(packet, { live: false }));
+  document.getElementById("total").textContent = page.total;
+}
+
+async function loadStats() {
+  const stats = await api("/api/stats");
+  document.getElementById("total").textContent = stats.packets;
+  document.getElementById("stats").innerHTML =
+    Object.entries(stats.by_type)
+      .map(([name, count]) => `<tr><td>${name}</td><td>${count}</td></tr>`)
+      .join("") || "<tr><td>no packets yet</td></tr>";
+}
+
+async function loadCommands() {
+  const { commands } = await api("/api/commands?limit=25");
+  document.getElementById("cmd-rows").innerHTML = commands
+    .map(c => `<tr><td>${c.id}</td><td>${c.name}</td><td>${c.link ?? "—"}</td>
+               <td style="color:${c.status === "sent" ? "var(--ok)" : "var(--bad)"}"
+                   title="${escapeHtml(c.error || "")}">${c.status}</td></tr>`)
+    .join("");
+}
+
+async function loadLinks() {
+  const { links } = await api("/api/links");
+  showLinks(links);
+}
+
+// --- wiring -------------------------------------------------------------------
+
+document.getElementById("reload").onclick = () => loadPackets().catch(console.error);
+document.getElementById("filter-type").onchange = () => loadPackets().catch(console.error);
+document.getElementById("filter-src").onchange = () => loadPackets().catch(console.error);
+
+document.getElementById("pause").onclick = event => {
+  state.paused = !state.paused;
+  event.target.textContent = state.paused ? "Resume live" : "Pause live";
+};
+
+document.getElementById("clear").onclick = async event => {
+  const button = event.target;
+  const status = document.getElementById("store-status");
+
+  // Name the exact cost of the click before asking for it.
+  let stored = "all";
+  try {
+    stored = (await api("/api/stats")).packets;
+  } catch { /* fall back to the vague wording */ }
+
+  if (stored === 0) {
+    status.className = "status";
+    status.textContent = "store is already empty";
+    return;
+  }
+  if (!confirm(`Delete ${stored} stored packets?\n\n` +
+               `This erases the flight record on the ground station and cannot be undone. ` +
+               `Live telemetry keeps streaming.`)) {
+    return;
+  }
+
+  button.disabled = true;
+  status.className = "status";
+  status.textContent = "clearing…";
+  try {
+    const result = await api("/api/packets", { method: "DELETE" });
+    document.getElementById("rows").innerHTML = "";
+    status.className = "status ok";
+    status.textContent = `cleared ${result.deleted} packets`;
+    await loadStats();
+  } catch (error) {
+    status.className = "status err";
+    status.textContent = `clear failed: ${error.message || error}`;
+  } finally {
+    button.disabled = false;
+  }
+};
+
+document.getElementById("cmd-send").onclick = async () => {
+  const status = document.getElementById("cmd-status");
+  const button = document.getElementById("cmd-send");
+  const raw = document.getElementById("cmd-args").value.trim();
+
+  let args = {};
+  try {
+    if (raw) args = JSON.parse(raw);
+  } catch {
+    status.className = "status err";
+    status.textContent = "args must be valid JSON";
+    return;
+  }
+
+  button.disabled = true;
+  status.className = "status";
+  status.textContent = "sending…";
+  try {
+    const result = await api("/api/commands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: document.getElementById("cmd-name").value, args }),
+    });
+    status.className = "status ok";
+    status.textContent = `sent #${result.id} over ${result.link} (0x${result.bytes})`;
+  } catch (error) {
+    status.className = "status err";
+    status.textContent = String(error.message || error);
+  } finally {
+    button.disabled = false;
+    loadCommands().catch(console.error);
+  }
+};
+
+setInterval(() => {
+  renderTiles();
+  drawChart();
+  const cutoff = Date.now() - 1000;
+  state.recentTimes = state.recentTimes.filter(t => t > cutoff);
+  document.getElementById("rate").textContent = state.recentTimes.length;
+}, 500);
+
+setInterval(() => { loadStats().catch(() => {}); loadLinks().catch(() => {}); }, 5000);
+
+connect();
+loadPackets().catch(console.error);
+loadStats().catch(console.error);
+loadCommands().catch(console.error);
+</script>
+</body>
+</html>
