@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# SQLite store (default SP_DB_PATH)
+data/
+*.db
+*.db-wal
+*.db-shm
