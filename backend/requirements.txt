@@ -1,2 +1,9 @@
 # Bluetooth LE library
 bleak ~= 3.0.2
+
+# REST + websocket API
+fastapi ~= 0.115
+uvicorn[standard] ~= 0.32
+
+# Async SQLite driver
+aiosqlite ~= 0.20
