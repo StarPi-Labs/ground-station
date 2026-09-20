@@ -112,6 +112,7 @@
       <div class="row">
         <select id="filter-type"><option value="">all types</option></select>
         <select id="filter-src"><option value="">all sources</option></select>
+        <select id="filter-link"><option value="">all links</option></select>
         <button id="reload">Reload from database</button>
         <button id="pause">Pause live</button>
         <button id="clear" class="danger">Clear store</button>
@@ -315,7 +316,10 @@ function onPacket(packet) {
 function passesFilter(packet) {
   const type = document.getElementById("filter-type").value;
   const src = document.getElementById("filter-src").value;
-  return (!type || packet.type === type) && (!src || packet.src === src);
+  const link = document.getElementById("filter-link").value;
+  return (!type || packet.type === type) &&
+         (!src || packet.src === src) &&
+         (!link || packet.link === link);
 }
 
 // --- websocket ----------------------------------------------------------------
@@ -349,6 +353,7 @@ function setWs(connected, text) {
 function showLinks(links) {
   const dot = document.getElementById("link-dot");
   const text = document.getElementById("link-text");
+  fillLinkFilter((links || []).map(l => l.name));
   if (!links || !links.length) { dot.className = "dot"; text.textContent = "link: none"; return; }
   const up = links.filter(l => l.connected);
   dot.className = "dot" + (up.length ? " on" : " idle");
@@ -380,6 +385,20 @@ function fillFilters(enums) {
   fill("filter-src", enums.sources);
 }
 
+// Link names are runtime state, not protocol enums: they come from the links
+// that are up plus any link the stored packets arrived on.
+function fillLinkFilter(names) {
+  const select = document.getElementById("filter-link");
+  const known = new Set([...select.options].map(option => option.value));
+  for (const name of names) {
+    if (!name || known.has(name)) continue;
+    known.add(name);
+    const option = document.createElement("option");
+    option.value = option.textContent = name;
+    select.appendChild(option);
+  }
+}
+
 function fillCommands(commands) {
   const select = document.getElementById("cmd-name");
   if (select.options.length) return;
@@ -399,9 +418,11 @@ function fillCommands(commands) {
 async function loadPackets() {
   const type = document.getElementById("filter-type").value;
   const src = document.getElementById("filter-src").value;
+  const link = document.getElementById("filter-link").value;
   const query = new URLSearchParams({ limit: "100", order: "desc" });
   if (type) query.append("type", type);
   if (src) query.append("src", src);
+  if (link) query.append("link", link);
 
   const page = await api("/api/packets?" + query);
   document.getElementById("rows").innerHTML = "";
@@ -412,6 +433,7 @@ async function loadPackets() {
 async function loadStats() {
   const stats = await api("/api/stats");
   document.getElementById("total").textContent = stats.packets;
+  fillLinkFilter(Object.keys(stats.by_link || {}));
   document.getElementById("stats").innerHTML =
     Object.entries(stats.by_type)
       .map(([name, count]) => `<tr><td>${name}</td><td>${count}</td></tr>`)
@@ -437,6 +459,7 @@ async function loadLinks() {
 document.getElementById("reload").onclick = () => loadPackets().catch(console.error);
 document.getElementById("filter-type").onchange = () => loadPackets().catch(console.error);
 document.getElementById("filter-src").onchange = () => loadPackets().catch(console.error);
+document.getElementById("filter-link").onchange = () => loadPackets().catch(console.error);
 
 document.getElementById("pause").onclick = event => {
   state.paused = !state.paused;

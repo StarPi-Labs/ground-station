@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from config import config
 from hub import Subscriber
-from links import LinkError, UnknownCommand
+from links import REGISTRY, LinkError, UnknownCommand
 from protocol import (
     ProtocolError,
     describe_enums,
@@ -117,6 +117,9 @@ def create_app(station: Station | None = None) -> FastAPI:
         src: list[str] = Query(default=[], description="Filter by source, repeatable"),
         type: list[str] = Query(default=[], description="Filter by message type, repeatable"),
         payload_type: list[str] = Query(default=[], description="Filter by payload type"),
+        link: list[str] = Query(
+            default=[], description="Filter by link the packet arrived on, repeatable"
+        ),
         since_us: int | None = Query(None, description="Only packets at/after this µs timestamp"),
         until_us: int | None = Query(None, description="Only packets at/before this µs timestamp"),
         order: Literal["asc", "desc"] = Query("desc"),
@@ -129,6 +132,7 @@ def create_app(station: Station | None = None) -> FastAPI:
             "src_mask": src_mask,
             "type_mask": type_mask,
             "payload_mask": payload_mask,
+            "links": _links(link),
             "since_us": since_us,
             "until_us": until_us,
         }
@@ -196,7 +200,8 @@ def create_app(station: Station | None = None) -> FastAPI:
     async def websocket_endpoint(websocket: WebSocket) -> None:
         """Pushes every decoded packet as ``{"event": "packet", "data": {...}}``.
 
-        Query parameter ``backfill=N`` replays the last N packets on connect.
+        Query parameter ``backfill=N`` replays the last N packets on connect,
+        and ``link=ble,lora`` restricts the stream to those transports.
         """
         st: Station = websocket.app.state.station
         await websocket.accept()
@@ -205,6 +210,13 @@ def create_app(station: Station | None = None) -> FastAPI:
             backfill = int(websocket.query_params.get("backfill", 20))
         except ValueError:
             backfill = 20
+
+        try:
+            links = _links(websocket.query_params.getlist("link"))
+        except HTTPException as exc:
+            await websocket.send_json({"event": "error", "message": exc.detail})
+            await websocket.close(code=1008)
+            return
 
         subscriber = st.hub.subscribe()
         try:
@@ -215,13 +227,17 @@ def create_app(station: Station | None = None) -> FastAPI:
                         "links": st.link_status(),
                         "enums": describe_enums(),
                         "commands": st.available_commands(),
+                        "filter": {"links": links},
                     },
                 }
             )
-            for event in st.hub.recent(max(0, backfill)):
+            # Filter before slicing, so a link filter still yields `backfill`
+            # events when the buffer is shared with a busier transport.
+            replay = [event for event in st.hub.recent() if _wanted(event, links)]
+            for event in replay[-max(0, backfill) :] if backfill > 0 else []:
                 await websocket.send_json(event)
 
-            sender = asyncio.create_task(_pump(websocket, subscriber))
+            sender = asyncio.create_task(_pump(websocket, subscriber, links))
             receiver = asyncio.create_task(_drain(websocket))
             done, pending = await asyncio.wait(
                 {sender, receiver}, return_when=asyncio.FIRST_COMPLETED
@@ -250,10 +266,28 @@ def create_app(station: Station | None = None) -> FastAPI:
 # --- helpers -------------------------------------------------------------------
 
 
-async def _pump(websocket: WebSocket, subscriber: Subscriber) -> None:
+async def _pump(
+    websocket: WebSocket, subscriber: Subscriber, links: list[str] | None = None
+) -> None:
     while True:
         event = await subscriber.get()
-        await websocket.send_json(event)
+        if _wanted(event, links):
+            await websocket.send_json(event)
+
+
+def _wanted(event: dict[str, Any], links: list[str] | None) -> bool:
+    """Whether an event passes a client's link filter.
+
+    Events that carry no link (``hello``, ``pong``) always pass; the filter only
+    hides traffic belonging to another transport.
+    """
+    if not links:
+        return True
+    link = event.get("link")
+    if link is None:
+        data = event.get("data")
+        link = data.get("link") if isinstance(data, dict) else None
+    return link is None or link in links
 
 
 async def _drain(websocket: WebSocket) -> None:
@@ -262,6 +296,27 @@ async def _drain(websocket: WebSocket) -> None:
         message = await websocket.receive_text()
         if message.strip().lower() in ("ping", '"ping"'):
             await websocket.send_json({"event": "pong"})
+
+
+def _links(values: list[str]) -> list[str] | None:
+    """Parse a repeated (or comma-separated) ``link`` query parameter.
+
+    Names are checked against the link registry so a typo is reported instead
+    of silently matching nothing.
+    """
+    names: list[str] = []
+    for value in values:
+        for part in value.split(","):
+            part = part.strip().lower()
+            if not part or part in names:
+                continue
+            if part not in REGISTRY:
+                known = ", ".join(sorted(REGISTRY))
+                raise HTTPException(
+                    status_code=400, detail=f"unknown link {part!r}; known links: {known}"
+                )
+            names.append(part)
+    return names or None
 
 
 def _mask(values: list[str], resolver: Any) -> int | None:
