@@ -14,7 +14,21 @@ This project uses:
 The software stack involves the following components:
 - [Open MCT](https://nasa.github.io/openmct/) for telemetry visualization
 - Python backend for data processing and communication with the LoRa module and Bluetooth LE
-- (Potentially) SQLite database for data storage and retrieval
+- SQLite database for data storage and retrieval
+
+### Backend
+
+`backend/` holds the Python service: it decodes telemetry frames, stores them
+in SQLite, pushes them to websocket clients and forwards commands back to the
+rocket. `cd backend && make build && make run` brings it up on
+<http://localhost:8000>, where `/docs` is the generated API reference (`/`
+redirects there).
+
+Open MCT is the telemetry front end; the backend also bundles a bare-bones
+dashboard for quick checks, which is opt-in — `SP_SERVE_WEB=true` serves it at
+`/`, and `make run-web` does that for you. See
+[backend/README.md](backend/README.md) for the API, the protocol and the full
+list of settings.
 
 > [!NOTE]
 > Below is the README from the Open MCT QuickStart repository (since this is a fork).
