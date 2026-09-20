@@ -174,11 +174,6 @@ _PAYLOAD_LAYOUT: dict[MessagePayloadType, tuple[int | None, str | None]] = {
 }
 
 
-def payload_size(payload_type: MessagePayloadType) -> int | None:
-    """Serialized payload size in bytes, or ``None`` when variable-length."""
-    return _PAYLOAD_LAYOUT[payload_type][0]
-
-
 def _decode_payload(payload_type: MessagePayloadType, raw: bytes) -> Any:
     size, fmt = _PAYLOAD_LAYOUT[payload_type]
 
