@@ -1,7 +1,8 @@
 TAG=StarPi/gs-backend
 VERSION=latest
 PORT?=8000
-DATA?=$(PWD)/data
+# CURDIR, not PWD: PWD stays at the caller's directory under `make -C backend`.
+DATA?=$(CURDIR)/data
 
 .PHONY: build run run-web run-sim dev setup-bl
 
