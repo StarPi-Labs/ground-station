@@ -37,11 +37,17 @@ added later without touching the API, the decoder or the storage layer.
     make run
     ```
 
-Then open <http://localhost:8000/> for the dashboard, or
-<http://localhost:8000/docs> for the generated API reference.
+Then open <http://localhost:8000/docs> for the generated API reference (`/`
+redirects there).
+
+The bundled dashboard is opt-in — set `SP_SERVE_WEB=true` to serve it at `/`:
+
+```sh
+make run-web
+```
 
 No rocket at hand? `make run-sim` feeds the same pipeline from a built-in
-telemetry simulator.
+telemetry simulator, dashboard included.
 
 To run without Docker:
 
@@ -65,7 +71,7 @@ All settings come from environment variables.
 | `SP_BLE_RECONNECT_DELAY` | `5` | Delay between reconnect attempts, seconds |
 | `SP_MAX_PAGE_SIZE` | `1000` | Upper bound on `limit` |
 | `SP_LIVE_BUFFER` | `200` | Packets kept for websocket backfill |
-| `SP_SERVE_WEB` | `true` | Serve the bundled dashboard at `/` |
+| `SP_SERVE_WEB` | `false` | Serve the bundled dashboard at `/` (else `/` redirects to `/docs`) |
 | `SP_LOG_LEVEL` | `INFO` | Log verbosity |
 
 ## API
@@ -193,5 +199,5 @@ src/
     base.py     transport interface
     ble.py      Bluetooth LE (Ble.hpp)
     sim.py      telemetry simulator
-  web/index.html  dashboard
+  web/index.html  dashboard (served only with SP_SERVE_WEB=true)
 ```
