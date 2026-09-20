@@ -32,7 +32,7 @@ list of settings.
 
 > [!NOTE]
 > Below is the README from the Open MCT QuickStart repository (since this is a fork).
-> It will eventually modifed/removed.
+> It will eventually be modified/removed.
 
 # Open MCT QuickStart
 
