@@ -242,10 +242,13 @@ def create_app(station: Station | None = None) -> FastAPI:
             # Filter before slicing, so a link filter still yields `backfill`
             # events when the buffer is shared with a busier transport.
             replay = [event for event in st.hub.recent() if _wanted(event, links)]
-            for event in replay[-max(0, backfill) :] if backfill > 0 else []:
+            replay_events = replay[-max(0, backfill) :] if backfill > 0 else []
+            for event in replay_events:
                 await websocket.send_json(event)
 
-            sender = asyncio.create_task(_pump(websocket, subscriber, links))
+            sender = asyncio.create_task(
+                _pump(websocket, subscriber, links, skip_event_ids={id(event) for event in replay_events})
+            )
             receiver = asyncio.create_task(_drain(websocket))
             done, pending = await asyncio.wait(
                 {sender, receiver}, return_when=asyncio.FIRST_COMPLETED
@@ -282,10 +285,18 @@ def create_app(station: Station | None = None) -> FastAPI:
 
 
 async def _pump(
-    websocket: WebSocket, subscriber: Subscriber, links: list[str] | None = None
+    websocket: WebSocket,
+    subscriber: Subscriber,
+    links: list[str] | None = None,
+    skip_event_ids: set[int] | None = None,
 ) -> None:
+    skip_event_ids = skip_event_ids or set()
     while True:
         event = await subscriber.get()
+        token = id(event)
+        if token in skip_event_ids:
+            skip_event_ids.discard(token)
+            continue
         if _wanted(event, links):
             await websocket.send_json(event)
 
