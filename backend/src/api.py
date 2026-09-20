@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -257,8 +258,15 @@ def create_app(station: Station | None = None) -> FastAPI:
 
     # --- static web page ---------------------------------------------------
 
+    # Opt-in via SP_SERVE_WEB; without it "/" points at the API reference so the
+    # docs stay the landing page either way.
     if config.serve_web and os.path.isdir(WEB_DIR):
         app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+    else:
+
+        @app.get("/", include_in_schema=False)
+        async def root() -> RedirectResponse:
+            return RedirectResponse("/docs")
 
     return app
 

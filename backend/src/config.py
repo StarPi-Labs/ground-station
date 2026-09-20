@@ -66,8 +66,9 @@ class Config:
     max_page_size: int = field(default_factory=lambda: _env_int("SP_MAX_PAGE_SIZE", 1000))
     # Keep the newest N packets in memory for instant websocket backfill.
     live_buffer_size: int = field(default_factory=lambda: _env_int("SP_LIVE_BUFFER", 200))
-    # Serve the bundled demo web page at "/".
-    serve_web: bool = field(default_factory=lambda: _env_bool("SP_SERVE_WEB", True))
+    # Serve the bundled demo web page at "/". Off by default: the API is the
+    # product, the page is a demo you opt into.
+    serve_web: bool = field(default_factory=lambda: _env_bool("SP_SERVE_WEB", False))
 
 
 config = Config()
