@@ -172,9 +172,8 @@ class BLELink(Link):
         if not data:
             return
         if len(data) > LOG_MESSAGE_BUFFER_SIZE:
-            log.warning("oversized BLE frame (%d B), truncating", len(data))
-            data = data[:LOG_MESSAGE_BUFFER_SIZE]
-        await self._emit(bytes(data))
+            log.warning("oversized BLE frame (%d B), dropping", len(data))
+            return
 
     async def _sleep_before_retry(self) -> None:
         try:
