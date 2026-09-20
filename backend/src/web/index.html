@@ -228,7 +228,7 @@ function renderTiles() {
     tile.className = "tile" + (age > 5 ? " stale" : "");
     tile.innerHTML = `
       <div class="label">${spec.label}</div>
-      <div class="value">${packet ? payloadText(packet) : "—"}</div>
+      <div class="value">${packet ? escapeHtml(payloadText(packet)) : "—"}</div>
       <div class="sub">${packet ? `${packet.src} · ${spec.unit || packet.payload_type}` : "no data"}</div>`;
     container.appendChild(tile);
   }
