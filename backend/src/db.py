@@ -340,7 +340,7 @@ def _name(enum_cls: type, value: int) -> str:
         return f"UNKNOWN({value})"
 
 
-def _row_to_packet(row: Sequence[Any]) -> dict[str, Any]:
+def _row_to_packet(row: aiosqlite.Row) -> dict[str, Any]:
     timestamp_us = row["timestamp_us"]
     return {
         "id": row["id"],

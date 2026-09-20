@@ -14,7 +14,7 @@ import random
 import time
 from typing import Any
 
-from links.base import CommandSpec, Link, PacketHandler
+from links.base import BadCommand, CommandSpec, Link, PacketHandler, UnknownCommand
 from protocol import LogMessage, MessagePayloadType, MessageType, SourceSubsystem
 
 log = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ COMMANDS = {
     "sensor_calibration": CommandSpec(
         name="sensor_calibration",
         description="Pretend to calibrate the sensors (simulator no-op).",
-        params={"value": "optional int, echoed back"},
+        params={"value": "optional int 0-255, echoed back (default 1)"},
     )
 }
 
@@ -132,5 +132,18 @@ class SimLink(Link):
         return list(COMMANDS.values())
 
     async def send_command(self, name: str, args: dict[str, Any]) -> bytes:
+        # The simulator delivers nothing, so it validates as strictly as a real
+        # link would: a command it accepts here must be one it advertises.
+        if name not in COMMANDS:
+            raise UnknownCommand(f"simulator link has no command {name!r}")
+
+        raw = args.get("value", 1)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            raise BadCommand(f"'value' must be an integer, got {raw!r}") from None
+        if not 0 <= value <= 255:
+            raise BadCommand("'value' must be in 0..255")
+
         log.info("simulator received command %s %s", name, args)
-        return bytes([int(args.get("value", 1)) & 0xFF])
+        return bytes([value])

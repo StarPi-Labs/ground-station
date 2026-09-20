@@ -13,7 +13,7 @@ from typing import Any
 from config import Config, config as default_config
 from db import Database
 from hub import Hub
-from links import Link, LinkError, UnknownCommand, create_link
+from links import Link, LinkError, UnknownCommand, UnknownLink, create_link
 from protocol import LogMessage, ProtocolError
 
 log = logging.getLogger(__name__)
@@ -25,7 +25,12 @@ class Station:
         self.db = Database(self.config.db_path)
         self.hub = Hub(self.config.live_buffer_size)
         self.links: dict[str, Link] = {}
+        #: Frames that arrived but could not be decoded.
         self.decode_errors = 0
+        #: Decoded packets that could not be written to SQLite. Counted apart
+        #: from decode errors: a storage outage is a different fault to a bad
+        #: frame, and /api/health reports them separately.
+        self.store_errors = 0
 
     # --- lifecycle ---------------------------------------------------------
 
@@ -74,7 +79,7 @@ class Station:
         try:
             record = await self.db.insert_packet(message, link_name, frame)
         except Exception:  # noqa: BLE001 - never lose the live stream over a write error
-            self.decode_errors += 1
+            self.store_errors += 1
             log.exception("failed to persist packet from %s", link_name)
             record = message.to_dict()
             record.update({"id": None, "link": link_name, "received_at_us": None})
@@ -88,8 +93,9 @@ class Station:
     ) -> dict[str, Any]:
         """Dispatch a command to a link and record the attempt.
 
-        Returns the stored command record. Raises :class:`LinkError` /
-        :class:`UnknownCommand` when it cannot be delivered.
+        Returns the stored command record. Raises :class:`UnknownCommand`,
+        :class:`UnknownLink` or :class:`BadCommand` when the request itself is
+        wrong, and :class:`LinkError` when a valid command cannot be delivered.
         """
         args = args or {}
         link = self._resolve_link(name, link_name)
@@ -97,7 +103,7 @@ class Station:
         command_id = await self.db.insert_command(name, args, link.name, None)
         try:
             payload = await link.send_command(name, args)
-        except (LinkError, UnknownCommand) as exc:
+        except LinkError as exc:  # covers UnknownCommand and BadCommand
             await self.db.finish_command(command_id, "failed", str(exc))
             self.hub.publish(
                 {"event": "command", "data": {"id": command_id, "name": name, "status": "failed"}}
@@ -119,7 +125,8 @@ class Station:
         if link_name is not None:
             link = self.links.get(link_name)
             if link is None:
-                raise LinkError(f"no link named {link_name!r}")
+                known = ", ".join(sorted(self.links)) or "(none)"
+                raise UnknownLink(f"no link named {link_name!r}; active links: {known}")
             return link
 
         # No link requested: prefer a connected link that knows the command.

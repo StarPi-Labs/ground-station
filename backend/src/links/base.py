@@ -16,11 +16,24 @@ PacketHandler = Callable[[str, bytes], Awaitable[None]]
 
 
 class LinkError(RuntimeError):
-    """Raised when a link cannot carry out a request."""
+    """Raised when a link exists but cannot deliver — the rocket is unreachable.
+
+    The two subclasses below mean the *request* was wrong rather than the link,
+    so the API answers them with a 4xx instead of a 503. Catch them before the
+    base class.
+    """
 
 
 class UnknownCommand(LinkError):
     """Raised when a command name is not supported by a link."""
+
+
+class UnknownLink(LinkError):
+    """Raised when a caller names a link that is not configured."""
+
+
+class BadCommand(LinkError):
+    """Raised when a command's arguments are missing or malformed."""
 
 
 @dataclass(frozen=True)
@@ -62,8 +75,11 @@ class Link(abc.ABC):
     async def send_command(self, name: str, args: dict[str, Any]) -> bytes:
         """Send a command; returns the raw bytes put on the wire.
 
-        Raises :class:`UnknownCommand` for an unsupported name, and
-        :class:`LinkError` when the link cannot deliver it.
+        Every implementation must validate before it transmits: raise
+        :class:`UnknownCommand` for a name outside :meth:`supported_commands`,
+        :class:`BadCommand` for arguments it will not accept, and
+        :class:`LinkError` when the command is valid but cannot be delivered.
+        Returning normally means the bytes really went out.
         """
 
     @abc.abstractmethod
