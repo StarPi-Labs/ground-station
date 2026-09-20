@@ -46,6 +46,9 @@ class Hub:
     def __init__(self, buffer_size: int = 200) -> None:
         self._subscribers: set[Subscriber] = set()
         self._recent: deque[dict[str, Any]] = deque(maxlen=max(0, buffer_size))
+        #: Drops belonging to subscribers that have disconnected. Their counts
+        #: would otherwise vanish with them, making the total go backwards.
+        self._dropped_closed = 0
 
     # --- subscription ------------------------------------------------------
 
@@ -55,11 +58,25 @@ class Hub:
         return subscriber
 
     def unsubscribe(self, subscriber: Subscriber) -> None:
-        self._subscribers.discard(subscriber)
+        # Guarded so a double unsubscribe cannot count the same drops twice.
+        if subscriber in self._subscribers:
+            self._dropped_closed += subscriber.dropped
+            self._subscribers.discard(subscriber)
 
     @property
     def subscriber_count(self) -> int:
         return len(self._subscribers)
+
+    @property
+    def dropped_events(self) -> int:
+        """Events discarded since startup because a client fell too far behind.
+
+        Monotonic: live subscribers are summed on read, departed ones were
+        folded into the running total when they unsubscribed. A number that
+        climbs means clients are too slow for the ingest rate, not that
+        telemetry was lost — the packets are still in SQLite.
+        """
+        return self._dropped_closed + sum(sub.dropped for sub in self._subscribers)
 
     # --- publishing --------------------------------------------------------
 
