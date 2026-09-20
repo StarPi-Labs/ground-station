@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
 import aiosqlite
 
@@ -353,10 +353,3 @@ def _row_to_packet(row: aiosqlite.Row) -> dict[str, Any]:
         "type": _name(MessageType, row["type"]),
         "payload": json.loads(row["payload"]) if row["payload"] is not None else None,
     }
-
-
-def mask_of(values: Iterable[int]) -> int:
-    mask = 0
-    for value in values:
-        mask |= int(value)
-    return mask
