@@ -8,7 +8,15 @@ from __future__ import annotations
 
 from typing import Callable
 
-from links.base import CommandSpec, Link, LinkError, PacketHandler, UnknownCommand
+from links.base import (
+    BadCommand,
+    CommandSpec,
+    Link,
+    LinkError,
+    PacketHandler,
+    UnknownCommand,
+    UnknownLink,
+)
 
 LinkFactory = Callable[[PacketHandler], Link]
 
@@ -37,16 +45,18 @@ def create_link(name: str, on_packet: PacketHandler) -> Link:
         factory = REGISTRY[name]
     except KeyError:
         known = ", ".join(sorted(REGISTRY))
-        raise LinkError(f"unknown link {name!r}; known links: {known}") from None
+        raise UnknownLink(f"unknown link {name!r}; known links: {known}") from None
     return factory(on_packet)
 
 
 __all__ = [
+    "BadCommand",
     "CommandSpec",
     "Link",
     "LinkError",
     "PacketHandler",
     "UnknownCommand",
+    "UnknownLink",
     "REGISTRY",
     "create_link",
 ]

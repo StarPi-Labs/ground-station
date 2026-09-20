@@ -17,7 +17,14 @@ from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.exc import BleakError
 
 from config import config
-from links.base import CommandSpec, Link, LinkError, PacketHandler, UnknownCommand
+from links.base import (
+    BadCommand,
+    CommandSpec,
+    Link,
+    LinkError,
+    PacketHandler,
+    UnknownCommand,
+)
 
 log = logging.getLogger(__name__)
 
@@ -174,6 +181,7 @@ class BLELink(Link):
         if len(data) > LOG_MESSAGE_BUFFER_SIZE:
             log.warning("oversized BLE frame (%d B), dropping", len(data))
             return
+        await self._emit(bytes(data))
 
     async def _sleep_before_retry(self) -> None:
         try:
@@ -221,20 +229,20 @@ class BLELink(Link):
             try:
                 value = int(value)
             except (TypeError, ValueError):
-                raise LinkError(f"'value' must be an integer, got {value!r}") from None
+                raise BadCommand(f"'value' must be an integer, got {value!r}") from None
             if not 0 <= value <= 255:
-                raise LinkError("'value' must be in 0..255")
+                raise BadCommand("'value' must be in 0..255")
             return SENSOR_CALIBRATION_CHARACTERISTIC_UUID, bytes([value])
 
         # raw_write
         characteristic = args.get("characteristic")
         if not characteristic:
-            raise LinkError("'characteristic' is required")
+            raise BadCommand("'characteristic' is required")
         hex_data = str(args.get("data", ""))
         try:
             payload = bytes.fromhex(hex_data)
         except ValueError:
-            raise LinkError(f"'data' is not valid hex: {hex_data!r}") from None
+            raise BadCommand(f"'data' is not valid hex: {hex_data!r}") from None
         if not payload:
-            raise LinkError("'data' must contain at least one byte")
+            raise BadCommand("'data' must contain at least one byte")
         return str(characteristic), payload

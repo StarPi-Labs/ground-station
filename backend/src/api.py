@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from config import config
 from hub import Subscriber
-from links import REGISTRY, LinkError, UnknownCommand
+from links import REGISTRY, BadCommand, LinkError, UnknownCommand, UnknownLink
 from protocol import (
     ProtocolError,
     describe_enums,
@@ -93,6 +93,7 @@ def create_app(station: Station | None = None) -> FastAPI:
             "links": st.link_status(),
             "websocket_clients": st.hub.subscriber_count,
             "decode_errors": st.decode_errors,
+            "store_errors": st.store_errors,
         }
 
     @app.get("/api/enums", tags=["meta"])
@@ -180,12 +181,17 @@ def create_app(station: Station | None = None) -> FastAPI:
     async def send_command(
         request: CommandRequest, st: Station = Depends(get_station)
     ) -> dict[str, Any]:
+        # Order matters: the 4xx cases below all subclass LinkError, and only
+        # the bare LinkError means "the rocket is unreachable".
         try:
             return await st.send_command(request.name, request.args, request.link)
         except UnknownCommand as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (UnknownLink, BadCommand) as exc:
+            # The caller named a link that is not up, or arguments the link
+            # rejected: a bad request, not an unreachable rocket.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         except LinkError as exc:
-            # The link exists but could not deliver — the rocket is unreachable.
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.get("/api/commands/{command_id}", tags=["commands"])
