@@ -18,35 +18,7 @@ services:
       - docker_openmct_link
     extra_hosts:
       - "host.docker.internal:host-gateway"
-  couchdb:
-    build: couchdb
-    ports:
-      - '5984:5984'
-    networks:
-      - docker_openmct_link
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - couchdb-data:/opt/couchdb/data
-  yamcs:
-    build: yamcs
-    ports:
-      - '8090:8090'
-      - '10015:10015/udp'
-    networks:
-      - docker_openmct_link
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-  simulator:
-    build: simulator
-    networks:
-      - docker_openmct_link
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-    - yamcs
 volumes:
-  couchdb-data:
   openmct-dist:
 networks:
   docker_openmct_link:
