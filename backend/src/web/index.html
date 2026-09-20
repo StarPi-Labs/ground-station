@@ -405,6 +405,7 @@ function fillCommands(commands) {
   for (const command of commands) {
     const option = document.createElement("option");
     option.value = command.name;
+    option.dataset.link = command.link;
     option.textContent = `${command.name} (${command.link})`;
     option.title = command.description;
     select.appendChild(option);
@@ -507,6 +508,8 @@ document.getElementById("clear").onclick = async event => {
 document.getElementById("cmd-send").onclick = async () => {
   const status = document.getElementById("cmd-status");
   const button = document.getElementById("cmd-send");
+  const select = document.getElementById("cmd-name");
+  const selected = select.options[select.selectedIndex];
   const raw = document.getElementById("cmd-args").value.trim();
 
   let args = {};
@@ -525,7 +528,11 @@ document.getElementById("cmd-send").onclick = async () => {
     const result = await api("/api/commands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: document.getElementById("cmd-name").value, args }),
+      body: JSON.stringify({
+        name: select.value,
+        args,
+        link: selected ? selected.dataset.link : null,
+      }),
     });
     status.className = "status ok";
     status.textContent = `sent #${result.id} over ${result.link} (0x${result.bytes})`;
