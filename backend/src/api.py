@@ -92,6 +92,7 @@ def create_app(station: Station | None = None) -> FastAPI:
             "status": "ok",
             "links": st.link_status(),
             "websocket_clients": st.hub.subscriber_count,
+            "dropped_events": st.hub.dropped_events,
             "decode_errors": st.decode_errors,
             "store_errors": st.store_errors,
         }
