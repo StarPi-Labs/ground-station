@@ -78,12 +78,16 @@ All settings come from environment variables.
 | `GET` | `/api/packets/latest` | Most recent packet per message type |
 | `GET` | `/api/packets/{id}` | A single packet |
 | `DELETE` | `/api/packets` | Clear the store |
-| `GET` | `/api/stats` | Counts by type and source |
+| `GET` | `/api/stats` | Counts by type, source and link |
 
 `GET /api/packets` accepts `limit`, `offset`, `order` (`asc`/`desc`),
 `since_us`, `until_us`, and the repeatable filters `src`, `type`,
-`payload_type`. Filters accept enum names and are OR-ed together, so
+`payload_type`, `link`. Filters accept enum names and are OR-ed together, so
 `?src=S_IMU&src=S_BARO` (or `?src=S_IMU,S_BARO`) returns both.
+
+`link` selects the transport a packet arrived on (`ble`, `sim`, … — the names
+in `SP_LINKS`), which is how a flight over one radio is read back without the
+other's traffic: `?link=ble`. An unknown link name returns `400`.
 
 ```sh
 curl 'http://localhost:8000/api/packets?type=T_ALT_SPEED&limit=5'
@@ -142,10 +146,15 @@ characteristic) and `raw_write` (`{"characteristic": "<uuid>", "data": "<hex>"}`
 {"event": "packet", "data": { "...": "same shape as GET /api/packets" }}
 ```
 
-The first message is `{"event": "hello", "data": {"links": …, "enums": …, "commands": …}}`,
+The first message is
+`{"event": "hello", "data": {"links": …, "enums": …, "commands": …, "filter": …}}`,
 followed by a replay of the last `?backfill=N` packets (default 20). Other
 events: `command` when one is dispatched, `error` for an undecodable frame.
 Send `ping` to get a `pong`.
+
+`?link=ble,sim` restricts the stream — replay included — to those transports;
+events that carry no link (`hello`, `pong`) always come through. An unknown
+link name closes the socket with `1008` after an `error` event.
 
 ### Meta
 

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS packets (
 CREATE INDEX IF NOT EXISTS idx_packets_timestamp ON packets (timestamp_us DESC);
 CREATE INDEX IF NOT EXISTS idx_packets_type      ON packets (type, timestamp_us DESC);
 CREATE INDEX IF NOT EXISTS idx_packets_src       ON packets (src, timestamp_us DESC);
+CREATE INDEX IF NOT EXISTS idx_packets_link      ON packets (link, timestamp_us DESC);
 
 CREATE TABLE IF NOT EXISTS commands (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,12 +128,13 @@ class Database:
         src_mask: int | None = None,
         type_mask: int | None = None,
         payload_mask: int | None = None,
+        links: Sequence[str] | None = None,
         since_us: int | None = None,
         until_us: int | None = None,
         order: str = "desc",
     ) -> list[dict[str, Any]]:
         where, params = _packet_filters(
-            src_mask, type_mask, payload_mask, since_us, until_us
+            src_mask, type_mask, payload_mask, links, since_us, until_us
         )
         direction = "ASC" if order.lower() == "asc" else "DESC"
 
@@ -152,11 +154,12 @@ class Database:
         src_mask: int | None = None,
         type_mask: int | None = None,
         payload_mask: int | None = None,
+        links: Sequence[str] | None = None,
         since_us: int | None = None,
         until_us: int | None = None,
     ) -> int:
         where, params = _packet_filters(
-            src_mask, type_mask, payload_mask, since_us, until_us
+            src_mask, type_mask, payload_mask, links, since_us, until_us
         )
         async with self.conn.execute(
             f"SELECT COUNT(*) AS n FROM packets {where}", params
@@ -207,12 +210,18 @@ class Database:
         ) as cursor:
             by_src = await cursor.fetchall()
 
+        async with self.conn.execute(
+            "SELECT link, COUNT(*) AS n FROM packets GROUP BY link"
+        ) as cursor:
+            by_link = await cursor.fetchall()
+
         return {
             "packets": int(totals["n"]) if totals else 0,
             "first_timestamp_us": totals["first"] if totals else None,
             "last_timestamp_us": totals["last"] if totals else None,
             "by_type": {_name(MessageType, row["type"]): row["n"] for row in by_type},
             "by_source": {_name(SourceSubsystem, row["src"]): row["n"] for row in by_src},
+            "by_link": {row["link"]: row["n"] for row in by_link},
         }
 
     async def purge_packets(self) -> int:
@@ -291,13 +300,15 @@ def _packet_filters(
     src_mask: int | None,
     type_mask: int | None,
     payload_mask: int | None,
+    links: Sequence[str] | None,
     since_us: int | None,
     until_us: int | None,
 ) -> tuple[str, list[Any]]:
     """Build the shared WHERE clause.
 
     Enum columns hold bit flags, so a mask match (``col & mask``) lets a caller
-    select several sources or types in one request.
+    select several sources or types in one request. ``link`` is a plain name
+    instead, so several links are matched with an ``IN`` set.
     """
     clauses: list[str] = []
     params: list[Any] = []
@@ -306,6 +317,10 @@ def _packet_filters(
         if mask:
             clauses.append(f"({column} & ?) != 0")
             params.append(mask)
+
+    if links:
+        clauses.append(f"link IN ({', '.join('?' * len(links))})")
+        params.extend(links)
 
     if since_us is not None:
         clauses.append("timestamp_us >= ?")
