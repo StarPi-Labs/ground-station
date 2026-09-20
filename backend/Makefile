@@ -24,6 +24,7 @@ run-sim:
 		-v $(DATA):/data \
 		-p $(PORT):8000 \
 		-e SP_LINKS=sim \
+		-e SP_DB_PATH=/data/simulator.db \
 		-it \
 		$(TAG):$(VERSION)
 
