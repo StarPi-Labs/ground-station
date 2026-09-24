@@ -44,7 +44,8 @@ SP_LINKS=sim SP_DB_PATH=/data/simulator.db docker compose up -d --build
 
 Compose settings, all optional: `SP_LINKS` (`ble`), `SP_DB_PATH`
 (`/data/starpi.db`, stored in `backend/data/`), `FRONTEND_PORT` (`8040`),
-`BACKEND_PORT` (`8000`).
+`BACKEND_PORT` (`8000`). Put machine-specific values in a git-ignored `.env`
+(start from `.env.example`); Compose reads it automatically.
 
 ```mermaid
 graph LR
