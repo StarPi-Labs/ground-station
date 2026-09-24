@@ -41,8 +41,13 @@ const openmct = window.openmct;
     openmct.install(openmct.plugins.ClearData(['table', 'telemetry.plot.overlay', 'telemetry.plot.stacked']));
 
     openmct.install(window.StarPiPlugin());
+    openmct.install(window.StarPiLaunchControl());
 
     document.addEventListener('DOMContentLoaded', function () {
+        // Open straight on the flight dashboard unless a link points elsewhere.
+        if (!window.location.hash) {
+            window.location.hash = '#/browse/starpi:root/starpi:launch-control?view=starpi.launch-control-view';
+        }
         openmct.start();
     });
 }());

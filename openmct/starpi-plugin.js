@@ -9,6 +9,8 @@
     const NAMESPACE = 'starpi';
     const ROOT_KEY = 'root';
     const TELEMETRY_TYPE = 'starpi.telemetry';
+    // Flight dashboard; its type and view come from launch-control/launch-control.js.
+    const LAUNCH_CONTROL_KEY = 'launch-control';
 
     // Upper bound on GET /api/packets?limit=, matches SP_MAX_PAGE_SIZE.
     const PAGE_SIZE = 1000;
@@ -321,6 +323,15 @@
 
             openmct.objects.addProvider(NAMESPACE, {
                 get(identifier) {
+                    if (identifier.key === LAUNCH_CONTROL_KEY) {
+                        return Promise.resolve({
+                            identifier,
+                            name: 'Launch Control',
+                            type: 'starpi.launch-control',
+                            location: `${NAMESPACE}:${ROOT_KEY}`
+                        });
+                    }
+
                     if (identifier.key === ROOT_KEY) {
                         return Promise.resolve({
                             identifier,
@@ -352,7 +363,8 @@
                 },
                 load() {
                     return Promise.resolve(
-                        Object.keys(DICTIONARY).map((key) => ({ namespace: NAMESPACE, key }))
+                        [LAUNCH_CONTROL_KEY, ...Object.keys(DICTIONARY)]
+                            .map((key) => ({ namespace: NAMESPACE, key }))
                     );
                 }
             });

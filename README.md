@@ -64,6 +64,33 @@ live data from the `/ws` websocket. Open MCT itself comes from npm, pinned in
 notebooks are saved in the browser's local storage, so they stay on the machine
 that made them.
 
+### Launch Control
+
+Open MCT opens on **StarPi › Launch Control**, the flight dashboard: mission
+clock, flight phase, altitude above ground, vertical speed, acceleration and
+their records, charts, position from the pad, orientation, system log and the
+command panel. It follows the time conductor at the bottom: *Real-time* shows
+the live flight, *Fixed* replays any past window. Collapse Open MCT's side
+panes for the widest layout.
+
+The rocket reports none of these directly, so the dashboard estimates them
+(`openmct/launch-control/flight-state.js`):
+
+* **Ground level** is the median barometric altitude while on the pad. *Set
+  ground here* pins the current altitude instead (kept in the browser); *Use
+  pad median* goes back.
+* **Flight phase**: launch when acceleration stays above 2 g for 200 ms (or
+  the vertical speed passes 15 m/s), burnout below 1.2 g, apogee when the
+  vertical speed turns negative, landed after 5 s still within 15 m of the
+  ground.
+* **Pad position** is the average GPS fix before launch.
+
+Commands need a second click to confirm, and are disabled while their link is
+down. A red banner flags an unreachable backend, a missing rocket link or
+telemetry older than 5 s (amber past 2 s).
+
+`node --test openmct/launch-control/flight-state.test.js` runs the phase-estimation tests.
+
 ### Backend
 
 `backend/` holds the Python service: it decodes telemetry frames, stores them

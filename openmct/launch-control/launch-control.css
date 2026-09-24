@@ -1,0 +1,628 @@
+/*
+ * Launch Control view. Read at a glance, outdoors, on a laptop: very high
+ * contrast, big tabular numerals, and colour reserved for state (ok / warn /
+ * alarm) — telemetry itself is drawn in a single data hue.
+ */
+.starpi-lc {
+    --lc-bg: oklch(0.155 0.006 250);
+    --lc-panel: oklch(0.19 0.007 250);
+    --lc-line: oklch(0.31 0.01 250);
+    --lc-grid: oklch(0.27 0.008 250);
+    --lc-ink: oklch(0.97 0.004 250);
+    --lc-ink-2: oklch(0.85 0.008 250);
+    --lc-ink-3: oklch(0.71 0.01 250);
+    --lc-data: oklch(0.8 0.11 230);
+    --lc-ok: oklch(0.8 0.16 150);
+    --lc-warn: oklch(0.85 0.15 80);
+    --lc-alarm: oklch(0.69 0.2 27);
+    --lc-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --lc-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --lc-ease: cubic-bezier(0.25, 1, 0.5, 1);
+
+    container-type: inline-size;
+    height: 100%;
+    overflow: auto;
+    background: var(--lc-bg);
+    color: var(--lc-ink);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.starpi-lc *,
+.starpi-lc *::before,
+.starpi-lc *::after {
+    box-sizing: border-box;
+}
+
+.starpi-lc [hidden] {
+    display: none !important;
+}
+
+.starpi-lc h3,
+.starpi-lc p,
+.starpi-lc ol,
+.starpi-lc ul,
+.starpi-lc dl,
+.starpi-lc dd {
+    margin: 0;
+    padding: 0;
+}
+
+.starpi-lc ol,
+.starpi-lc ul {
+    list-style: none;
+}
+
+.lc-num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
+
+.lc-unit {
+    color: var(--lc-ink-3);
+    font-weight: 400;
+}
+
+/* --- grid: panels separated by hairlines, not boxed ------------------------- */
+
+.lc-grid {
+    display: grid;
+    gap: 1px;
+    min-height: 100%;
+    background: var(--lc-line);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+        "alert"
+        "head"
+        "primary"
+        "charts"
+        "gps"
+        "commands"
+        "attitude"
+        "log";
+}
+
+@container (min-width: 760px) {
+    .lc-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-areas:
+            "alert alert"
+            "head head"
+            "primary charts"
+            "gps commands"
+            "attitude log";
+    }
+}
+
+@container (min-width: 1240px) {
+    .lc-grid {
+        grid-template-columns: minmax(19rem, 22rem) minmax(0, 1fr) minmax(18rem, 21rem);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            "alert alert alert"
+            "head head head"
+            "primary charts gps"
+            "attitude log commands";
+    }
+}
+
+.lc-alert { grid-area: alert; }
+.lc-head { grid-area: head; }
+.lc-primary { grid-area: primary; }
+.lc-charts { grid-area: charts; }
+.lc-gps { grid-area: gps; }
+.lc-attitude { grid-area: attitude; }
+.lc-log { grid-area: log; }
+.lc-commands { grid-area: commands; }
+
+.lc-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    padding: 16px 20px 20px;
+    background: var(--lc-panel);
+}
+
+.lc-title {
+    color: var(--lc-ink-2);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.lc-title--minor {
+    margin-top: 4px;
+}
+
+.lc-hint,
+.lc-empty {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+/* --- alert ---------------------------------------------------------------------- */
+
+.lc-alert {
+    padding: 10px 20px;
+    color: var(--lc-bg);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+/* Dark text on the state colour; beats the generic .is-* text colours below. */
+.starpi-lc .lc-alert.is-alarm { background: var(--lc-alarm); color: var(--lc-bg); }
+.starpi-lc .lc-alert.is-warn { background: var(--lc-warn); color: var(--lc-bg); }
+
+/* --- header: clock, phases, link health ------------------------------------------ */
+
+.lc-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 16px 28px;
+    padding: 14px 20px;
+    background: var(--lc-bg);
+}
+
+.lc-clock {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 11rem;
+}
+
+.lc-clock__label {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-clock__value {
+    font-size: 30px;
+    font-weight: 650;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+}
+
+.lc-phases {
+    display: flex;
+    flex: 1 1 32rem;
+    gap: 4px;
+    min-width: 0;
+}
+
+.lc-phase {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    padding: 8px 10px;
+    border-top: 3px solid var(--lc-grid);
+    color: var(--lc-ink-3);
+    transition: background-color 200ms var(--lc-ease), color 200ms var(--lc-ease), border-color 200ms var(--lc-ease);
+}
+
+.lc-phase__name {
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.lc-phase__time {
+    min-height: 1.3em;
+    font-size: 12px;
+}
+
+.lc-phase.is-done {
+    border-top-color: var(--lc-ink-3);
+    color: var(--lc-ink-2);
+}
+
+.lc-phase.is-current {
+    border-top-color: var(--lc-ink);
+    background: var(--lc-ink);
+    color: var(--lc-bg);
+}
+
+.lc-health {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 2px 20px;
+    align-content: center;
+}
+
+.lc-health > div {
+    display: flex;
+    flex-direction: column;
+}
+
+.lc-health dt {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-health dd {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.starpi-lc .is-ok { color: var(--lc-ok); }
+.starpi-lc .is-warn { color: var(--lc-warn); }
+.starpi-lc .is-alarm { color: var(--lc-alarm); }
+
+/* --- primary readouts ------------------------------------------------------------ */
+
+.lc-primary {
+    gap: 18px;
+}
+
+.lc-readout {
+    display: flex;
+    flex-direction: column;
+}
+
+.lc-readout__label {
+    color: var(--lc-ink-2);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.lc-readout__value {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 36px;
+    font-weight: 650;
+    line-height: 1.1;
+}
+
+.lc-readout__value .lc-unit {
+    font-size: 16px;
+}
+
+.lc-readout--hero .lc-readout__value {
+    font-size: 72px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+}
+
+.lc-readout--hero .lc-readout__value .lc-unit {
+    font-size: 22px;
+    letter-spacing: 0;
+}
+
+.lc-readout__note {
+    margin-top: 6px;
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-ground {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-top: 4px;
+}
+
+.starpi-lc.is-stale .lc-primary .lc-num {
+    color: var(--lc-ink-3);
+}
+
+.lc-records {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--lc-line);
+}
+
+.lc-records dt {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-records dd {
+    font-size: 20px;
+    font-weight: 650;
+}
+
+.lc-records dd .lc-unit {
+    font-size: 13px;
+}
+
+.lc-records .lc-records__when {
+    color: var(--lc-ink-3);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+/* --- charts ------------------------------------------------------------------------- */
+
+.lc-charts {
+    position: relative;
+    gap: 10px;
+}
+
+.lc-chart {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 130px;
+}
+
+.lc-chart canvas {
+    display: block;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 110px;
+}
+
+.lc-charts > .lc-empty {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    padding: 8px 14px;
+    background: var(--lc-panel);
+    font-size: 14px;
+    transform: translate(-50%, -50%);
+}
+
+/* --- GPS ------------------------------------------------------------------------------- */
+
+.lc-range {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 22rem;
+}
+
+.lc-pairs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+}
+
+.lc-pairs--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lc-pairs dt {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-pairs dd {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* --- attitude ------------------------------------------------------------------------- */
+
+.lc-dials {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.lc-dial {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    align-items: center;
+}
+
+.lc-dial svg {
+    grid-row: span 2;
+    width: 44px;
+    height: 44px;
+}
+
+.lc-dial__face {
+    fill: none;
+    stroke: var(--lc-line);
+    stroke-width: 1.5;
+}
+
+.lc-dial__tick {
+    stroke: var(--lc-ink-3);
+    stroke-width: 1.5;
+}
+
+.lc-dial__needle {
+    stroke: var(--lc-data);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+}
+
+.lc-dial__hub {
+    fill: var(--lc-data);
+}
+
+.lc-dial__label {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-dial__value {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* --- log -------------------------------------------------------------------------------- */
+
+.lc-log__list {
+    max-height: 16rem;
+    overflow-y: auto;
+    font-family: var(--lc-mono);
+    font-size: 12.5px;
+}
+
+.lc-log__list li {
+    display: grid;
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    gap: 12px;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--lc-grid);
+}
+
+.lc-log__list time {
+    color: var(--lc-ink-3);
+}
+
+.lc-log__list span {
+    overflow-wrap: anywhere;
+}
+
+/* --- commands ------------------------------------------------------------------------- */
+
+.lc-commands__list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.lc-command {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+}
+
+.lc-command__text {
+    min-width: 0;
+}
+
+.lc-command__text code,
+.lc-history code {
+    font-family: var(--lc-mono);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.lc-command__link {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-command__text p {
+    color: var(--lc-ink-2);
+    font-size: 12.5px;
+}
+
+.lc-command__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.lc-confirm {
+    color: var(--lc-warn);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.lc-result {
+    min-height: 1.4em;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.lc-history {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12.5px;
+}
+
+.lc-history li {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: baseline;
+}
+
+.lc-history li.lc-empty {
+    display: block;
+}
+
+.lc-history time {
+    color: var(--lc-ink-3);
+}
+
+.lc-status {
+    font-weight: 600;
+}
+
+/* --- buttons ------------------------------------------------------------------------ */
+
+.lc-button {
+    padding: 6px 14px;
+    border: 1px solid var(--lc-line);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--lc-ink);
+    font: 600 13px/1.3 var(--lc-font);
+    cursor: pointer;
+    transition: background-color 150ms var(--lc-ease), border-color 150ms var(--lc-ease);
+}
+
+.lc-button:hover:not(:disabled) {
+    border-color: var(--lc-ink-3);
+    background: var(--lc-grid);
+}
+
+.lc-button:active:not(:disabled) {
+    background: var(--lc-line);
+}
+
+.lc-button:focus-visible {
+    outline: 2px solid var(--lc-data);
+    outline-offset: 2px;
+}
+
+.lc-button:disabled {
+    color: var(--lc-ink-3);
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.lc-button--quiet {
+    padding: 4px 0;
+    border-color: transparent;
+    color: var(--lc-ink-2);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.lc-button--quiet:hover:not(:disabled) {
+    border-color: transparent;
+    background: transparent;
+    color: var(--lc-ink);
+}
+
+.lc-button--danger {
+    border-color: var(--lc-alarm);
+    background: var(--lc-alarm);
+    color: var(--lc-bg);
+}
+
+.lc-button--danger:hover:not(:disabled) {
+    border-color: var(--lc-ink);
+    background: var(--lc-alarm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lc-phase,
+    .lc-button {
+        transition: none;
+    }
+}
