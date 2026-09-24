@@ -5,7 +5,8 @@ the web page without hardware. It emits frames through the same serializer the
 firmware uses, so everything downstream sees real wire bytes.
 
 The telemetry follows a complete flight, repeated every ``FLIGHT_CYCLE_S``
-seconds: pad, motor burn, coast, apogee (~285 m), parachute descent, landing.
+seconds: pad, motor burn, coast, apogee (~3000 m), drogue and main parachute
+descent, landing.
 """
 
 from __future__ import annotations
@@ -26,12 +27,15 @@ log = logging.getLogger(__name__)
 G = 9.81
 
 # One simulated flight, repeated forever: seconds from the start of the cycle.
-FLIGHT_CYCLE_S = 90.0
+# Sized for the real rocket's target: apogee ~3000 m, dual-deploy recovery.
+FLIGHT_CYCLE_S = 250.0
 PAD_S = 20.0  # waiting on the pad
-BURN_S = 2.2  # motor burn
-BURN_ACCEL = 4.0 * G  # proper acceleration felt during the burn
-CHUTE_SPEED = 8.0  # descent rate under the parachute, m/s
-CHUTE_OPEN_S = 2.0  # time for the parachute to slow the fall to CHUTE_SPEED
+BURN_S = 3.3  # motor burn
+BURN_ACCEL = 8.0 * G  # proper acceleration felt during the burn
+DROGUE_SPEED = 25.0  # descent rate under the drogue, m/s
+MAIN_SPEED = 6.0  # descent rate under the main parachute, m/s
+MAIN_ALTITUDE = 450.0  # the main opens below this height, m
+DEPLOY_S = 2.0  # time for a parachute to settle the fall to its rate
 WIND_SPEED = 3.0  # horizontal drift while airborne, m/s
 STATUS_PERIOD_S = 5.0
 
@@ -40,14 +44,17 @@ PAD_LAT = 45.4642
 PAD_LON = 9.1900
 PAD_ALTITUDE_M = 120.0
 
-# Derived once: end of the burn, apogee, touchdown.
+# Derived once: end of the burn, apogee, parachute events, touchdown. No drag:
+# the burn is tuned so the ideal coast peaks near the target.
 _BURN_SPEED = (BURN_ACCEL - G) * BURN_S
 _BURN_ALT = 0.5 * (BURN_ACCEL - G) * BURN_S**2
 _COAST_S = _BURN_SPEED / G
 APOGEE_M = _BURN_ALT + _BURN_SPEED**2 / (2 * G)
 APOGEE_T = PAD_S + BURN_S + _COAST_S
-_CHUTE_DROP = 0.5 * CHUTE_SPEED * CHUTE_OPEN_S  # height lost while the chute opens
-LANDING_T = APOGEE_T + CHUTE_OPEN_S + (APOGEE_M - _CHUTE_DROP) / CHUTE_SPEED
+_DROGUE_SET_ALT = APOGEE_M - 0.5 * DROGUE_SPEED * DEPLOY_S
+_MAIN_T = APOGEE_T + DEPLOY_S + (_DROGUE_SET_ALT - MAIN_ALTITUDE) / DROGUE_SPEED
+_MAIN_SET_ALT = MAIN_ALTITUDE - 0.5 * (DROGUE_SPEED + MAIN_SPEED) * DEPLOY_S
+LANDING_T = _MAIN_T + DEPLOY_S + _MAIN_SET_ALT / MAIN_SPEED
 
 
 @dataclass(slots=True)
@@ -77,8 +84,8 @@ def flight_state(t: float) -> FlightState:
             0.5 * (BURN_ACCEL - G) * dt**2,
             (BURN_ACCEL - G) * dt,
             BURN_ACCEL,
-            90.0 * dt,
-            45.0 * dt**2,
+            60.0 * dt,
+            30.0 * dt**2,
             0.0,
             drift,
         )
@@ -92,21 +99,31 @@ def flight_state(t: float) -> FlightState:
             _BURN_SPEED - G * dt,
             0.4,
             198.0,
-            (45.0 * BURN_S**2 + 198.0 * dt) % 360.0,
+            (30.0 * BURN_S**2 + 198.0 * dt) % 360.0,
             0.0,
             drift,
         )
 
     if t < LANDING_T:
+        # Parachutes snap open with a jolt, then the fall settles to their rate.
         dt = t - APOGEE_T
-        if dt < CHUTE_OPEN_S:
-            # The parachute snaps open: a brief jolt, then a steady sink.
-            speed = -CHUTE_SPEED * dt / CHUTE_OPEN_S
-            altitude = APOGEE_M - 0.5 * CHUTE_SPEED * dt**2 / CHUTE_OPEN_S
+        if dt < DEPLOY_S:
+            speed = -DROGUE_SPEED * dt / DEPLOY_S
+            altitude = APOGEE_M - 0.5 * DROGUE_SPEED * dt**2 / DEPLOY_S
             accel = G + 2.0 * G * math.exp(-dt * 3.0)
+        elif t < _MAIN_T:
+            speed = -DROGUE_SPEED
+            altitude = _DROGUE_SET_ALT - DROGUE_SPEED * (dt - DEPLOY_S)
+            accel = G
+        elif t < _MAIN_T + DEPLOY_S:
+            dm = t - _MAIN_T
+            slowing = (DROGUE_SPEED - MAIN_SPEED) / DEPLOY_S
+            speed = -DROGUE_SPEED + slowing * dm
+            altitude = MAIN_ALTITUDE - DROGUE_SPEED * dm + 0.5 * slowing * dm**2
+            accel = G + 3.0 * G * math.exp(-dm * 3.0)
         else:
-            speed = -CHUTE_SPEED
-            altitude = APOGEE_M - _CHUTE_DROP - CHUTE_SPEED * (dt - CHUTE_OPEN_S)
+            speed = -MAIN_SPEED
+            altitude = _MAIN_SET_ALT - MAIN_SPEED * (t - _MAIN_T - DEPLOY_S)
             accel = G
         return FlightState(
             "DESCENT", max(0.0, altitude), speed, accel, 20.0, (dt * 20.0) % 360.0, 1.0, drift
