@@ -47,7 +47,9 @@ make run-web
 ```
 
 No rocket at hand? `make run-sim` feeds the same pipeline from a built-in
-telemetry simulator, dashboard included.
+telemetry simulator, dashboard included. It flies a complete flight every 90 s
+(20 s on the pad, 2.2 s burn at 4 g, apogee at ~285 m, parachute descent,
+landing), so every flight phase shows up in the frontend.
 
 To run without Docker:
 
