@@ -1,26 +1,29 @@
-version: '3.7'
 services:
-  apache:
-    build: apache
+  backend:
+    build: backend
+    restart: unless-stopped
+    environment:
+      SP_LINKS: ${SP_LINKS:-ble}
+      SP_DB_PATH: ${SP_DB_PATH:-/data/starpi.db}
+    volumes:
+      # BlueZ is reached over the host's D-Bus (run backend/scripts/setup-bluetooth.sh first).
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+      - ./backend/data:/data
     ports:
-      - '8040:80'
-    volumes:
-      - openmct-dist:/usr/local/apache2/htdocs/openmct
-    networks:
-      - docker_openmct_link
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-  openmct:
-    build: openmct
-    volumes:
-      - openmct-dist:/openmct/site
-    networks:
-      - docker_openmct_link
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-volumes:
-  openmct-dist:
-networks:
-  docker_openmct_link:
-    name: docker_openmct_link
-    driver: bridge
+      - '${BACKEND_PORT:-8000}:8000'
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  apache:
+    build:
+      context: apache
+      additional_contexts:
+        site: openmct
+    restart: unless-stopped
+    ports:
+      - '${FRONTEND_PORT:-8040}:80'
+    depends_on:
+      - backend

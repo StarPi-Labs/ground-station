@@ -16,6 +16,53 @@ The software stack involves the following components:
 - Python backend for data processing and communication with the LoRa module and Bluetooth LE
 - SQLite database for data storage and retrieval
 
+## Getting Started
+
+Prerequisites: Docker with Compose, and BlueZ on the host for the rocket link.
+
+```sh
+sh backend/scripts/setup-bluetooth.sh   # power on the Bluetooth controller
+docker compose up -d --build
+```
+
+Then open <http://localhost:8040> and log in as `testuser` / `NasaIsCool!`
+(stored in `apache/.htpasswd`; replace it before flying). The **StarPi** folder
+in the tree holds one telemetry object per message type, ready to be plotted,
+tabled or dropped into a layout. The indicator in the top bar shows whether the
+backend is reachable and which rocket links are up.
+
+No rocket at hand? Run the same stack on the built-in simulator:
+
+```sh
+SP_LINKS=sim SP_DB_PATH=/data/simulator.db docker compose up -d --build
+```
+
+| Service | What it does | URL |
+| --- | --- | --- |
+| `apache` | Serves Open MCT and proxies the backend under one login | <http://localhost:8040> |
+| `backend` | Decodes, stores and streams telemetry, sends commands | <http://localhost:8040/docs> (also `:8000` directly) |
+
+Compose settings, all optional: `SP_LINKS` (`ble`), `SP_DB_PATH`
+(`/data/starpi.db`, stored in `backend/data/`), `FRONTEND_PORT` (`8040`),
+`BACKEND_PORT` (`8000`).
+
+```mermaid
+graph LR
+    R[Rocket] -- BLE --> B[backend :8000]
+    B -- SQLite --> D[(backend/data)]
+    A[apache :8040] -- "/api, /ws, /docs" --> B
+    A -- serves --> O[Open MCT + StarPi plugin]
+```
+
+### Frontend
+
+`openmct/` holds the Open MCT site: `starpi-app.js` configures Open MCT and
+`starpi-plugin.js` connects it to the backend — history from `GET /api/packets`,
+live data from the `/ws` websocket. Open MCT itself comes from npm, pinned in
+`openmct/package.json`, and is built into the `apache` image. Layouts and
+notebooks are saved in the browser's local storage, so they stay on the machine
+that made them.
+
 ### Backend
 
 `backend/` holds the Python service: it decodes telemetry frames, stores them
@@ -29,65 +76,3 @@ dashboard for quick checks, which is opt-in — `SP_SERVE_WEB=true` serves it at
 `/`, and `make run-web` does that for you. See
 [backend/README.md](backend/README.md) for the API, the protocol and the full
 list of settings.
-
-> [!NOTE]
-> Below is the README from the Open MCT QuickStart repository (since this is a fork).
-> It will eventually be modified/removed.
-
-# Open MCT QuickStart
-
-This repository contains a quick way to get started with Open MCT, integrated with:
-* [Open MCT](https://nasa.github.io/openmct/)
-* [CouchDB](https://couchdb.apache.org/)
-* [YAMCS](https://yamcs.org/)
-* [Apache HTTP Server](https://httpd.apache.org/)
-
-## Prerequisites
-
-* [Docker](https://docs.docker.com/get-docker/)
-
-## Getting Started
-
-1. Clone this repository
-2. cd to the repository directory (usually `openmct-quickstart`)
-3. Run `docker compose up`
-4. Wait a bit for the containers to start ⏱️
-5. Open a browser to http://localhost:8040
-6. Enter the username/password `testuser`/`NasaIsCool!`
-
-## Nuts and Bolts
-
-The `docker-compose.yml` file in this repository defines a set of containers that work together to provide a complete Open MCT environment. The containers are:
-* `openmct` - Builds the Open MCT web application into a shared volume (and quits)
-* `couchdb` - The CouchDB database used by Open MCT to persist objects created by the operator.
-* `yamcs` - The YAMCS telemetry & commanding server used by Open MCT to retrieve telemetry data.
-* `simulator` - A simple python simulator that generates telemetry data for YAMCS to serve.
-* `apache` - The Apache HTTP server used to serve the Open MCT web application, and to proxy requests to YAMCS and CouchDB.
-
-Hosted websites are available at the following URLs:
-* The OpenMCT web application is served from http://localhost:8040
-* The YAMCS web application is served from http://localhost:8040/yamcs
-* The Apache server status is served from http://localhost:8040/server-status
-* The CouchDB web application is served from http://localhost:8040/couchdb/_utils (with username `admin` and password `password`)
-
-## Diagram
-
-```mermaid
-graph TD
-    A[Apache HTTP Server] -- serves --> B[Open MCT Web Application]
-    A -- proxies --> C[CouchDB Database]
-    A -- proxies --> D[YAMCS Telemetry & Commanding Server]
-    E[Python Simulator] -- generates telemetry data --> D
-    F[Docker Compose] -- orchestrates --> A
-    F -- orchestrates --> B
-    F -- orchestrates --> C
-    F -- orchestrates --> D
-    F -- orchestrates --> E
-
-    B -- "HTTP Traffic & JSON Storage" --> C
-    D -- "HTTP Traffic & JSON Storage" --> B
-
-    click B "http://localhost:8040" "OpenMCT Web Application"
-    click C "http://localhost:8040/couchdb/_utils" "CouchDB"
-    click D "http://localhost:8040/yamcs" "YAMCS"
-    click A "http://localhost:8040/server-status" "Apache Server Status"
