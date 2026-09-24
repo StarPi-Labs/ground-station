@@ -480,86 +480,60 @@
     overflow-wrap: anywhere;
 }
 
-/* --- commands ------------------------------------------------------------------------- */
+/* --- commands (commands/commands-panel.js, restyled to match) -------------------- */
 
-.lc-commands__list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+.starpi-lc .sp-cmd {
+    padding: 0;
+    overflow: visible;
 }
 
-.lc-command {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px 12px;
-}
-
-.lc-command__text {
-    min-width: 0;
-}
-
-.lc-command__text code,
-.lc-history code {
-    font-family: var(--lc-mono);
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.lc-command__link {
+.starpi-lc .sp-cmd__text p,
+.starpi-lc .sp-cmd__link,
+.starpi-lc .sp-cmd__history time,
+.starpi-lc .sp-cmd__empty {
     color: var(--lc-ink-3);
-    font-size: 12.5px;
+    opacity: 1;
 }
 
-.lc-command__text p {
+.starpi-lc .sp-cmd__heading {
     color: var(--lc-ink-2);
-    font-size: 12.5px;
-}
-
-.lc-command__actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-}
-
-.lc-confirm {
-    color: var(--lc-warn);
     font-size: 13px;
-    font-weight: 600;
+    opacity: 1;
 }
 
-.lc-result {
-    min-height: 1.4em;
-    font-size: 13px;
-    font-weight: 600;
+.starpi-lc .sp-cmd__confirm { color: var(--lc-warn); }
+.starpi-lc .sp-cmd .is-ok { color: var(--lc-ok); }
+.starpi-lc .sp-cmd .is-alarm { color: var(--lc-alarm); }
+
+.starpi-lc .sp-cmd .c-button {
+    padding: 6px 14px;
+    border: 1px solid var(--lc-line);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--lc-ink);
+    font: 600 13px/1.3 var(--lc-font);
 }
 
-.lc-history {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 12.5px;
+.starpi-lc .sp-cmd .c-button:hover:not(:disabled) {
+    border-color: var(--lc-ink-3);
+    background: var(--lc-grid);
 }
 
-.lc-history li {
-    display: grid;
-    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: baseline;
+.starpi-lc .sp-cmd .c-button:focus-visible {
+    outline: 2px solid var(--lc-data);
+    outline-offset: 2px;
 }
 
-.lc-history li.lc-empty {
-    display: block;
-}
-
-.lc-history time {
+.starpi-lc .sp-cmd .c-button:disabled {
     color: var(--lc-ink-3);
+    cursor: not-allowed;
+    opacity: 0.55;
 }
 
-.lc-status {
-    font-weight: 600;
+.starpi-lc .sp-cmd .sp-cmd__danger {
+    border-color: var(--lc-alarm);
+    background: var(--lc-alarm);
+    color: var(--lc-bg);
 }
 
 /* --- buttons ------------------------------------------------------------------------ */
@@ -607,17 +581,6 @@
     border-color: transparent;
     background: transparent;
     color: var(--lc-ink);
-}
-
-.lc-button--danger {
-    border-color: var(--lc-alarm);
-    background: var(--lc-alarm);
-    color: var(--lc-bg);
-}
-
-.lc-button--danger:hover:not(:disabled) {
-    border-color: var(--lc-ink);
-    background: var(--lc-alarm);
 }
 
 @media (prefers-reduced-motion: reduce) {

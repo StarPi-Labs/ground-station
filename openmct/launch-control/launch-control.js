@@ -3,9 +3,10 @@
  *
  * Reads the StarPi telemetry objects through Open MCT's telemetry API, so it
  * follows the time conductor: Real-time shows the live flight, Fixed replays
- * whatever window is selected. Backend health and commands come straight from
- * the REST API. Flight phase, ground level and records are estimated in
- * flight-state.js.
+ * whatever window is selected. Backend health and the command panel are
+ * shared with the rest of the StarPi plugin (window.StarPi,
+ * commands/commands-panel.js). Flight phase, ground level and records are
+ * estimated by flight-state.js, with the thresholds from Flight settings.
  */
 (function () {
     const NAMESPACE = 'starpi';
@@ -34,15 +35,8 @@
     const STALE_WARN_MS = 2000;
     const STALE_ALARM_MS = 5000;
     const RENDER_MS = 200;
-    const HEALTH_POLL_MS = 2000;
-    const HEALTH_TIMEOUT_MS = 1500;
-    const API_TIMEOUT_MS = 8000;
-    const COMMANDS_POLL_MS = 5000;
-    const CONFIRM_TIMEOUT_MS = 8000;
     const MAX_LOG = 200;
     const GROUND_KEY = 'starpi.launch-control.ground';
-    // Commands that stay out of the UI: raw_write can write anything anywhere.
-    const HIDDEN_COMMANDS = new Set(['raw_write']);
 
     // --- formatting ------------------------------------------------------------
 
@@ -234,10 +228,7 @@
 
             <section class="lc-panel lc-commands" aria-label="Commands">
                 <h3 class="lc-title">Commands</h3>
-                <ul class="lc-commands__list" data-ref="commands"></ul>
-                <p class="lc-result" data-ref="command-result" role="status"></p>
-                <h3 class="lc-title lc-title--minor">Recent</h3>
-                <ol class="lc-history" data-ref="history"></ol>
+                <div data-ref="commands"></div>
             </section>
             </div>
         </div>`;
@@ -245,17 +236,11 @@
     // --- view ------------------------------------------------------------------
 
     class LaunchControlView {
-        constructor(openmct, apiUrl) {
+        constructor(openmct) {
             this.openmct = openmct;
-            this.apiUrl = apiUrl;
             this.generation = 0;
             this.unsubscribers = [];
             this.timers = [];
-            this.health = null;
-            this.healthOk = false;
-            this.available = [];
-            this.history = [];
-            this.pendingConfirm = null;
             this.onBounds = this.onBounds.bind(this);
             this.onMode = this.onMode.bind(this);
         }
@@ -273,7 +258,9 @@
 
             this.refs.zero.addEventListener('click', () => this.pinGround(this.tracker.altitude));
             this.refs.unzero.addEventListener('click', () => this.pinGround(null));
-            this.refs.commands.addEventListener('click', (event) => this.onCommandClick(event));
+            this.commands = new window.StarPiCommandsPanel(this.refs.commands);
+            // Recalibrated thresholds: re-estimate the window with them.
+            this.unsubscribers.push(window.StarPi.flight.onSettings(() => this.load()));
 
             this.resize = new ResizeObserver(() => {
                 this.chartsDirty = true;
@@ -285,11 +272,7 @@
             this.openmct.time.on('clockChanged', this.onMode);
 
             this.subscribe().then(() => this.load());
-            this.pollHealth();
-            this.pollCommands();
             this.timers.push(setInterval(() => this.render(), RENDER_MS));
-            this.timers.push(setInterval(() => this.pollHealth(), HEALTH_POLL_MS));
-            this.timers.push(setInterval(() => this.pollCommands(), COMMANDS_POLL_MS));
         }
 
         destroy() {
@@ -297,7 +280,7 @@
             this.destroyed = true;
             this.unsubscribers.forEach((unsubscribe) => unsubscribe());
             this.timers.forEach((timer) => clearInterval(timer));
-            clearTimeout(this.confirmTimer);
+            this.commands?.destroy();
             this.resize?.disconnect();
             this.openmct.time.off('boundsChanged', this.onBounds);
             this.openmct.time.off('modeChanged', this.onMode);
@@ -337,7 +320,11 @@
         }
 
         reset() {
-            this.tracker = new window.StarPiFlight.FlightTracker({ groundOverride: readGround() });
+            const options = window.StarPi.flight.options();
+            this.tracker = new window.StarPiFlight.FlightTracker({
+                ...options,
+                groundOverride: readGround() ?? options.groundOverride
+            });
             this.series = { alt: [], speed: [], accel: [] };
             this.latest = {};
             this.logEntries = [];
@@ -466,115 +453,6 @@
             this.render();
         }
 
-        // --- backend polling ---------------------------------------------------
-
-        /** JSON call with a deadline: a stopped backend can keep Apache waiting for tens of seconds. */
-        async api(path, options = {}, timeoutMs = API_TIMEOUT_MS) {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), timeoutMs);
-            let response;
-            try {
-                response = await fetch(this.apiUrl + path, { ...options, signal: controller.signal });
-            } catch (error) {
-                throw new Error(error.name === 'AbortError' ? 'backend did not answer in time' : error.message);
-            } finally {
-                clearTimeout(timer);
-            }
-            const body = await response.json().catch(() => ({}));
-            if (!response.ok) {
-                const error = new Error(body.detail || `HTTP ${response.status}`);
-                error.status = response.status;
-                throw error;
-            }
-
-            return body;
-        }
-
-        async pollHealth() {
-            if (this.healthInFlight) {
-                return;
-            }
-            this.healthInFlight = true;
-            try {
-                this.health = await this.api('/health', {}, HEALTH_TIMEOUT_MS);
-                this.healthOk = true;
-            } catch (error) {
-                this.healthOk = false;
-            } finally {
-                this.healthInFlight = false;
-            }
-        }
-
-        async pollCommands() {
-            if (this.commandsInFlight) {
-                return;
-            }
-            this.commandsInFlight = true;
-            try {
-                const [available, history] = await Promise.all([
-                    this.api('/commands/available'),
-                    this.api('/commands?limit=5')
-                ]);
-                this.available = available.commands.filter((c) => !HIDDEN_COMMANDS.has(c.name));
-                this.history = history.commands;
-            } catch (error) {
-                // Health polling already reports an unreachable backend.
-            } finally {
-                this.commandsInFlight = false;
-            }
-            if (!this.destroyed) {
-                this.renderCommands();
-            }
-        }
-
-        linkUp(name) {
-            return Boolean(this.healthOk && this.health?.links.some((l) => l.name === name && l.connected));
-        }
-
-        onCommandClick(event) {
-            const button = event.target.closest('button[data-action]');
-            if (!button) {
-                return;
-            }
-            const { action, command, link } = button.dataset;
-
-            if (action === 'arm') {
-                this.pendingConfirm = `${command}@${link}`;
-                clearTimeout(this.confirmTimer);
-                this.confirmTimer = setTimeout(() => {
-                    this.pendingConfirm = null;
-                    this.renderCommands();
-                }, CONFIRM_TIMEOUT_MS);
-            } else if (action === 'cancel') {
-                this.pendingConfirm = null;
-            } else if (action === 'send') {
-                this.pendingConfirm = null;
-                this.send(command, link);
-            }
-            this.renderCommands();
-            this.refs.commands.querySelector('button[data-action]:not([disabled])')?.focus();
-        }
-
-        async send(name, link) {
-            const result = this.refs.commandResult;
-            result.className = 'lc-result';
-            result.textContent = `Sending ${name}…`;
-            try {
-                await this.api('/commands', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, args: {}, link })
-                });
-                result.classList.add('is-ok');
-                result.textContent = `${name} sent over ${link} at ${clock(Date.now())}`;
-            } catch (error) {
-                result.classList.add('is-alarm');
-                const reason = error.status === 503 ? 'rocket unreachable' : error.message;
-                result.textContent = `${name} failed: ${reason}`;
-            }
-            this.pollCommands();
-        }
-
         // --- rendering -----------------------------------------------------------
 
         render() {
@@ -649,19 +527,21 @@
             });
 
             // Backend health.
-            const links = this.health?.links ?? [];
+            const { station } = window.StarPi;
+            const health = station.health;
+            const links = health?.links ?? [];
             const upLinks = links.filter((l) => l.connected).map((l) => l.name);
-            refs.links.textContent = !this.healthOk ? 'offline'
+            refs.links.textContent = !station.ok ? 'offline'
                 : upLinks.length ? `${upLinks.join(', ')} up` : 'down';
-            refs.links.className = !this.healthOk || !upLinks.length ? 'is-alarm' : 'is-ok';
+            refs.links.className = !station.ok || !upLinks.length ? 'is-alarm' : 'is-ok';
 
-            const errors = this.health
-                ? this.health.decode_errors + this.health.store_errors + this.health.dropped_events
+            const errors = health
+                ? health.decode_errors + health.store_errors + health.dropped_events
                 : null;
             refs.errors.textContent = errors === null ? '—' : String(errors);
             refs.errors.className = `lc-num${errors ? ' is-warn' : ''}`;
-            refs.errors.title = this.health
-                ? `decode ${this.health.decode_errors}, store ${this.health.store_errors}, dropped ${this.health.dropped_events}`
+            refs.errors.title = health
+                ? `decode ${health.decode_errors}, store ${health.store_errors}, dropped ${health.dropped_events}`
                 : '';
 
             let alert = null;
@@ -672,7 +552,7 @@
                 refs.age.className = `lc-num${age === null || age > STALE_ALARM_MS ? ' is-alarm' : age > STALE_WARN_MS ? ' is-warn' : ''}`;
                 refs.rate.textContent = `${(this.receivedAt.length / 5).toFixed(0)} pkt/s`;
 
-                if (!this.healthOk) {
+                if (!station.ok) {
                     alert = 'Backend unreachable — readouts are frozen.';
                 } else if (!upLinks.length) {
                     alert = 'No link to the rocket.';
@@ -778,67 +658,28 @@
             window.StarPiCharts.drawStrip(refs.chartSpeed, { ...window_, series: series.speed, zero: true, floor: 4 });
             window.StarPiCharts.drawStrip(refs.chartAccel, { ...window_, series: series.accel, floor: 1 });
         }
-
-        renderCommands() {
-            const { refs } = this;
-            if (!this.available.length) {
-                refs.commands.innerHTML = `<li class="lc-empty lc-empty--inline">${this.healthOk ? 'No link offers commands.' : 'Backend unreachable.'}</li>`;
-            } else {
-                refs.commands.innerHTML = this.available.map((command) => {
-                    const id = `${command.name}@${command.link}`;
-                    const up = this.linkUp(command.link);
-                    const name = escapeHtml(command.name);
-                    const link = escapeHtml(command.link);
-                    const data = `data-command="${name}" data-link="${link}"`;
-                    const actions = this.pendingConfirm === id && up
-                        ? `<span class="lc-confirm">Send to the rocket?</span>
-                           <button type="button" class="lc-button lc-button--danger" data-action="send" ${data}>Confirm</button>
-                           <button type="button" class="lc-button lc-button--quiet" data-action="cancel" ${data}>Cancel</button>`
-                        : `<button type="button" class="lc-button" data-action="arm" ${data} ${up ? '' : 'disabled'}
-                             title="${up ? '' : `${link} link is down`}">Send…</button>`;
-
-                    return `<li class="lc-command">
-                        <div class="lc-command__text">
-                            <code>${name}</code> <span class="lc-command__link">via ${link}</span>
-                            <p>${escapeHtml(command.description)}</p>
-                        </div>
-                        <div class="lc-command__actions">${actions}</div>
-                    </li>`;
-                }).join('');
-            }
-
-            refs.history.innerHTML = this.history.length
-                ? this.history.map((c) => `<li>
-                    <time class="lc-num">${clock(c.created_at_us / 1000)}</time>
-                    <code>${escapeHtml(c.name)}</code>
-                    <span class="lc-status ${c.status === 'sent' ? 'is-ok' : c.status === 'failed' ? 'is-alarm' : ''}"
-                          title="${escapeHtml(c.error || '')}">${escapeHtml(c.status)}</span>
-                  </li>`).join('')
-                : '<li class="lc-empty lc-empty--inline">No commands sent yet.</li>';
-        }
     }
 
     // --- plugin ----------------------------------------------------------------
 
-    window.StarPiLaunchControl = function StarPiLaunchControl(config = {}) {
-        const apiUrl = config.apiUrl || '/api';
+    window.StarPiLaunchControl = function StarPiLaunchControl() {
 
         return function install(openmct) {
             openmct.types.addType(TYPE, {
                 name: 'Launch Control',
                 description: 'Flight dashboard for the StarPi rocket.',
-                cssClass: 'icon-telemetry-panel'
+                cssClass: 'icon-layout'
             });
 
             openmct.objectViews.addProvider({
                 key: 'starpi.launch-control-view',
                 name: 'Launch Control',
-                cssClass: 'icon-telemetry-panel',
+                cssClass: 'icon-layout',
                 canView(domainObject) {
                     return domainObject.type === TYPE;
                 },
                 view() {
-                    return new LaunchControlView(openmct, apiUrl);
+                    return new LaunchControlView(openmct);
                 },
                 priority() {
                     return 1;

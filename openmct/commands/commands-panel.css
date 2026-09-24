@@ -1,0 +1,104 @@
+/*
+ * Command panel. Inherits the host's colours (Open MCT theme or Launch
+ * Control); buttons are Open MCT's own c-button.
+ */
+.sp-cmd {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: 100%;
+    overflow: auto;
+    padding: 4px 2px;
+    font-size: 13px;
+}
+
+.sp-cmd ul,
+.sp-cmd ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sp-cmd p,
+.sp-cmd h4 {
+    margin: 0;
+}
+
+.sp-cmd__list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sp-cmd__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+}
+
+.sp-cmd__text {
+    min-width: 0;
+}
+
+.sp-cmd code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-weight: 600;
+}
+
+.sp-cmd__link,
+.sp-cmd__text p,
+.sp-cmd__history time,
+.sp-cmd__empty {
+    opacity: 0.75;
+}
+
+.sp-cmd__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.sp-cmd__confirm {
+    color: #ffc14d;
+    font-weight: 600;
+}
+
+.sp-cmd .sp-cmd__danger {
+    background: #e0423b;
+    color: #fff;
+}
+
+.sp-cmd__result {
+    min-height: 1.4em;
+    font-weight: 600;
+}
+
+.sp-cmd__heading {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.85;
+}
+
+.sp-cmd__history {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sp-cmd__history li {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: baseline;
+}
+
+.sp-cmd__history li.sp-cmd__empty {
+    display: block;
+}
+
+.sp-cmd .is-ok { color: #5fd37a; }
+.sp-cmd .is-alarm { color: #ff6b61; }
+.sp-cmd__status { font-weight: 600; }

@@ -2,6 +2,11 @@ const openmct = window.openmct;
 
 (function () {
     const FIFTEEN_MINUTES = 15 * 60 * 1000;
+    // Real-time windows end a little in the future: views that drop data
+    // newer than the window's end (gauges, LAD tables) would otherwise miss
+    // fresh packets between two clock ticks, or all of them if the rocket's
+    // clock runs slightly ahead of this machine's.
+    const LEAD = 5 * 1000;
 
     openmct.setAssetPath('/node_modules/openmct/dist');
 
@@ -22,7 +27,7 @@ const openmct = window.openmct;
                 clock: 'local',
                 clockOffsets: {
                     start: -FIFTEEN_MINUTES,
-                    end: 0
+                    end: LEAD
                 }
             },
             {
@@ -39,15 +44,28 @@ const openmct = window.openmct;
     openmct.install(openmct.plugins.Notebook());
     openmct.install(openmct.plugins.LADTable());
     openmct.install(openmct.plugins.ClearData(['table', 'telemetry.plot.overlay', 'telemetry.plot.stacked']));
+    openmct.install(openmct.plugins.ScatterPlot());
 
     openmct.install(window.StarPiPlugin());
+    openmct.install(window.StarPiCommands());
     openmct.install(window.StarPiLaunchControl());
 
-    document.addEventListener('DOMContentLoaded', function () {
-        // Open straight on the flight dashboard unless a link points elsewhere.
-        if (!window.location.hash) {
-            window.location.hash = '#/browse/starpi:root/starpi:launch-control?view=starpi.launch-control-view';
+    // A link to a specific object wins; otherwise open the flight dashboard.
+    const linked = Boolean(window.location.hash);
+
+    openmct.on('start', async function () {
+        try {
+            await window.StarPiDashboard.seed(openmct);
+        } catch (error) {
+            console.error('StarPi: could not create the flight dashboard', error);
         }
+        window.StarPi.flight.watchSettings();
+        if (!linked) {
+            window.location.hash = window.StarPiDashboard.PATH;
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
         openmct.start();
     });
 }());

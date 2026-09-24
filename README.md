@@ -57,39 +57,70 @@ graph LR
 
 ### Frontend
 
-`openmct/` holds the Open MCT site: `starpi-app.js` configures Open MCT and
-`starpi-plugin.js` connects it to the backend — history from `GET /api/packets`,
-live data from the `/ws` websocket. Open MCT itself comes from npm, pinned in
-`openmct/package.json`, and is built into the `apache` image. Layouts and
-notebooks are saved in the browser's local storage, so they stay on the machine
-that made them.
+`openmct/` holds the Open MCT site. Open MCT itself comes from npm, pinned in
+`openmct/package.json`, and is built into the `apache` image.
 
-### Launch Control
+The **StarPi** tree follows Open MCT's conventions: one telemetry object per
+measured quantity, grouped by subsystem, each with its unit and display
+precision, so any standard view can combine them.
 
-Open MCT opens on **StarPi › Launch Control**, the flight dashboard: mission
-clock, flight phase, altitude above ground, vertical speed, acceleration and
-their records, charts, position from the pad, orientation, system log and the
-command panel. It follows the time conductor at the bottom: *Real-time* shows
-the live flight, *Fixed* replays any past window. Collapse Open MCT's side
-panes for the widest layout.
+| Folder | Contents |
+| --- | --- |
+| Flight (estimated) | Flight phase, mission time, altitude above ground, apogee, max speed/acceleration, distance and bearing from the pad, ground track |
+| Barometer | Altitude (MSL), vertical speed, pressure, temperature |
+| IMU | Acceleration, angular rate, orientation: each opens as X/Y/Z overlaid and expands to the single axes |
+| GPS | Latitude, longitude |
+| Ground station | Rocket link state, packet rate, errors, dropped events |
+| System log | The rocket's log messages |
 
-The rocket reports none of these directly, so the dashboard estimates them
-(`openmct/launch-control/flight-state.js`):
+History comes from `GET /api/packets`, live data from the `/ws` websocket.
+Values turn *stale* (Open MCT's hatched style) when their message type has not
+arrived for 5 s. The real-time window ends 5 s in the future, so fresh packets
+are never dropped by views that ignore data past the window's end.
 
-* **Ground level** is the median barometric altitude while on the pad. *Set
-  ground here* pins the current altitude instead (kept in the browser); *Use
-  pad median* goes back.
+`starpi-plugin.js` is the telemetry plugin, `flight/` the flight estimates,
+`dashboard/seed.js` the standard dashboard, `commands/` the command panel and
+`launch-control/` the custom dashboard.
+
+### Flight dashboards
+
+There are two, to compare:
+
+* **My Items › StarPi Flight Dashboard › Flight Dashboard** (the page Open
+  MCT opens on) is built only from standard Open MCT objects: a Display Layout
+  with Condition Widgets for the flight phase and alarms, a Stacked Plot, a
+  Scatter Plot of the ground track, Overlay Plots, a Gauge, LAD tables and a
+  Telemetry Table. Everything can be edited from the UI (the pencil button):
+  move and resize items, restyle them, change the alarm thresholds in *Alarm
+  conditions*. It lives in the browser's local storage: delete the *StarPi
+  Flight Dashboard* folder and reload to get the original back.
+* **StarPi › Launch Control** is the custom view: the same data in a
+  purpose-built layout, fixed but denser.
+
+Both follow the time conductor at the bottom: *Real-time* shows the live
+flight, *Fixed* replays any past window. The only custom piece in the standard
+dashboard is **Commands** (Open MCT has no commanding UI without YAMCS): each
+command needs a second click to confirm and is disabled while its link is down.
+
+### Flight estimates and calibration
+
+The rocket reports no flight phase, ground level or pad position, so
+`openmct/flight/flight-state.js` estimates them from barometric altitude and
+speed, the accelerometer and GPS:
+
+* **Ground level**: the median barometric altitude while on the pad.
 * **Flight phase**: launch when acceleration stays above 2 g for 200 ms (or
   the vertical speed passes 15 m/s), burnout below 1.2 g, apogee when the
   vertical speed turns negative, landed after 5 s still within 15 m of the
   ground.
-* **Pad position** is the average GPS fix before launch.
+* **Pad position**: the average GPS fix before launch.
 
-Commands need a second click to confirm, and are disabled while their link is
-down. A red banner flags an unreachable backend, a missing rocket link or
-telemetry older than 5 s (amber past 2 s).
+The thresholds live in **My Items › StarPi Flight Dashboard › Flight
+settings**: change them with *Edit Properties*, and every flight view picks
+them up at once. A ground level set there replaces the pad median; Launch
+Control's *Set ground here* does the same for that view only.
 
-`node --test openmct/launch-control/flight-state.test.js` runs the phase-estimation tests.
+`node --test openmct/flight/flight-state.test.js` runs the estimation tests.
 
 ### Backend
 
