@@ -18,11 +18,11 @@ The software stack involves the following components:
 
 ## Getting Started
 
-Prerequisites: Docker with Compose, and BlueZ on the host for the rocket link.
+Prerequisites: Docker with Compose, Make, and BlueZ on the host for the rocket
+link.
 
 ```sh
-sh backend/scripts/setup-bluetooth.sh   # power on the Bluetooth controller
-docker compose up -d --build
+make up   # power on the Bluetooth controller, build, start, wait until healthy
 ```
 
 Then open <http://localhost:8040> and log in as `testuser` / `NasaIsCool!`
@@ -34,8 +34,13 @@ backend is reachable and which rocket links are up.
 No rocket at hand? Run the same stack on the built-in simulator:
 
 ```sh
-SP_LINKS=sim SP_DB_PATH=/data/simulator.db docker compose up -d --build
+make sim
 ```
+
+`make down` stops the stack, `make logs` follows it (`S=backend` for one
+service), `make test` runs the frontend tests and `make` lists every target.
+The Makefile only wraps `docker compose`, which still defines the services, so
+plain `docker compose` commands keep working.
 
 | Service | What it does | URL |
 | --- | --- | --- |
@@ -45,7 +50,8 @@ SP_LINKS=sim SP_DB_PATH=/data/simulator.db docker compose up -d --build
 Compose settings, all optional: `SP_LINKS` (`ble`), `SP_DB_PATH`
 (`/data/starpi.db`, stored in `backend/data/`), `FRONTEND_PORT` (`8040`),
 `BACKEND_PORT` (`8000`). Put machine-specific values in a git-ignored `.env`
-(start from `.env.example`); Compose reads it automatically.
+(start from `.env.example`); Compose reads it automatically, and the same
+variables can go on the `make` command line: `make up FRONTEND_PORT=9000`.
 
 ```mermaid
 graph LR
@@ -131,7 +137,8 @@ settings**: change them with *Edit Properties*, and every flight view picks
 them up at once. A ground level set there replaces the pad median; Launch
 Control's *Set ground here* does the same for that view only.
 
-`node --test openmct/flight/flight-state.test.js` runs the estimation tests.
+`make test` (`node --test openmct/flight/flight-state.test.js`) runs the
+estimation tests.
 
 ### Backend
 
