@@ -16,6 +16,8 @@
     const G = 9.80665;
 
     const PHASES = ['PAD', 'BOOST', 'COAST', 'APOGEE', 'DESCENT', 'LANDED'];
+    // Parachutes out, estimated from the descent rate (FlightTracker.recovery).
+    const RECOVERY = ['NONE', 'DROGUE', 'MAIN'];
 
     const DEFAULTS = {
         launchAccelG: 2.0, // PAD -> BOOST when the accelerometer reads more than this...
@@ -25,6 +27,8 @@
         apogeeHoldMs: 2000, // How long APOGEE stays on screen before DESCENT.
         apogeeDropM: 5, // Fallback apogee trigger: this far below the peak.
         apogeeArmMs: 1000, // No apogee this soon after launch (baro lag at liftoff).
+        mainSpeed: 12, // Main chute out once the fall under the drogue slows below this (m/s)
+        mainHoldMs: 1000, // for this long.
         landedSpeed: 1, // DESCENT -> LANDED when |speed| stays below this (m/s)
         landedAgl: 15, // and the altitude above ground stays below this (m)
         landedHoldMs: 5000, // for this long.
@@ -106,6 +110,11 @@
             this.highAccelSince = null;
             this.landedSince = null;
             this.track = [];
+            // Dual deploy: the drogue opens at apogee, the main lower down.
+            this.recovery = null; // null, 'DROGUE' or 'MAIN'
+            this.mainTime = null;
+            this.fastDescent = false;
+            this.slowSince = null;
         }
 
         /** Pin the ground level (m); `null` goes back to the pad median. */
@@ -266,6 +275,7 @@
                 if (falling) {
                     this.apogee = { agl: this.maxAgl, t: this.maxAglTime };
                     this.enter('APOGEE', this.maxAglTime ?? t);
+                    this.recovery = 'DROGUE';
                 }
             } else if (this.phase === 'APOGEE') {
                 if (t - this.apogee.t >= cfg.apogeeHoldMs) {
@@ -274,6 +284,7 @@
             }
 
             if (this.phase === 'DESCENT' || this.phase === 'APOGEE') {
+                this.trackRecovery(t, speed, agl);
                 if (Math.abs(speed) < cfg.landedSpeed && agl < cfg.landedAgl) {
                     this.landedSince ??= t;
                     if (t - this.landedSince >= cfg.landedHoldMs) {
@@ -285,6 +296,30 @@
                 } else {
                     this.landedSince = null;
                 }
+            }
+        }
+
+        /**
+         * Main chute: the fall under the drogue first gets fast, then slows
+         * well above the ground. A single-deploy flight never gets fast, so
+         * it stays on DROGUE.
+         */
+        trackRecovery(t, speed, agl) {
+            const cfg = this.config;
+            if (this.recovery !== 'DROGUE') {
+                return;
+            }
+            if (speed <= -cfg.mainSpeed) {
+                this.fastDescent = true;
+                this.slowSince = null;
+            } else if (this.fastDescent && agl >= cfg.landedAgl) {
+                this.slowSince ??= t;
+                if (t - this.slowSince >= cfg.mainHoldMs) {
+                    this.recovery = 'MAIN';
+                    this.mainTime = this.slowSince;
+                }
+            } else {
+                this.slowSince = null;
             }
         }
 
@@ -310,6 +345,8 @@
                 accelG: this.accelG,
                 launchTime: this.launchTime,
                 apogee: this.apogee,
+                recovery: this.recovery,
+                mainTime: this.mainTime,
                 maxAgl: this.maxAgl,
                 maxSpeed: this.maxSpeed,
                 maxAccelG: this.maxAccelG,
@@ -325,6 +362,7 @@
     return {
         G,
         PHASES,
+        RECOVERY,
         DEFAULTS,
         FlightTracker,
         distanceBearing,

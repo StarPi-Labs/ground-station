@@ -3,6 +3,7 @@
   "private": true,
   "description": "Open MCT build served by the ground station frontend container",
   "dependencies": {
-    "openmct": "4.3.1"
+    "openmct": "4.3.1",
+    "three": "0.186.1"
   }
 }

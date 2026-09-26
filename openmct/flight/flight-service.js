@@ -29,13 +29,14 @@
         { key: 'burnoutAccelG', name: 'Burnout: acceleration below (g)' },
         { key: 'apogeeArmMs', name: 'Apogee: not before launch + (ms)' },
         { key: 'apogeeDropM', name: 'Apogee: or this far below the peak (m)' },
+        { key: 'mainSpeed', name: 'Main chute: descent slower than (m/s)' },
         { key: 'landedSpeed', name: 'Landed: |vertical speed| below (m/s)' },
         { key: 'landedAgl', name: 'Landed: height above ground below (m)' },
         { key: 'landedHoldMs', name: 'Landed: for at least (ms)' }
     ];
 
     function flightPoints() {
-        const { PHASES } = window.StarPiFlight;
+        const { PHASES, RECOVERY } = window.StarPiFlight;
         const launched = (tracker) => tracker.launchTime !== null;
 
         return {
@@ -45,6 +46,13 @@
                 enumerations: PHASES.map((phase, index) => ({ value: index, string: phase })),
                 on: ['alt', 'accel'],
                 value: (tracker) => PHASES.indexOf(tracker.phase)
+            },
+            'flight.recovery': {
+                name: 'Parachutes',
+                format: 'enum',
+                enumerations: RECOVERY.map((state, index) => ({ value: index, string: state })),
+                on: ['alt'],
+                value: (tracker) => RECOVERY.indexOf(tracker.recovery ?? 'NONE')
             },
             'flight.mission-time': {
                 name: 'Mission time',

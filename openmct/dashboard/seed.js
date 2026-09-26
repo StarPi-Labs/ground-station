@@ -6,7 +6,7 @@
  * Telemetry Table - built with each type's own initialize() and saved to the
  * user's persistence, so it can be edited, restyled and recalibrated from the
  * UI like anything made by hand. The only custom pieces it embeds are the
- * StarPi telemetry itself and the Commands panel.
+ * StarPi telemetry itself, the Commands panel and the Rocket Attitude view.
  *
  * Seeding happens once: when the "StarPi Flight Dashboard" folder is missing.
  * Deleting that folder and reloading restores the original.
@@ -263,9 +263,10 @@
         object('i-track', track, 106, 9, 34, 25);
         object('i-position', position, 106, 35, 34, 15);
 
-        // Bottom: attitude, altitude gauge and environment, log, commands.
-        object('i-orientation', orientationPlot, 0, 51, 45, 17);
-        object('i-gyro', gyroPlot, 0, 69, 45, 16);
+        // Bottom: attitude (plots and the 3D rocket), altitude gauge and environment, log, commands.
+        object('i-orientation', orientationPlot, 0, 51, 27, 17);
+        object('i-gyro', gyroPlot, 0, 69, 27, 16);
+        object('i-rocket', { identifier: sp('rocket') }, 28, 51, 17, 34);
         object('i-gauge', gauge, 46, 51, 24, 18);
         object('i-environment', environment, 46, 70, 24, 15);
         object('i-log', log, 71, 51, 38, 34);

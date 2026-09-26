@@ -116,7 +116,7 @@
     const FOLDERS = {
         root: {
             name: 'StarPi',
-            children: ['launch-control', 'commands', 'flight', 'baro', 'imu', 'gps', 'station', 'sys.log']
+            children: ['launch-control', 'rocket', 'commands', 'flight', 'baro', 'imu', 'gps', 'station', 'sys.log']
         },
         baro: { name: 'Barometer', children: ['baro.altitude', 'baro.speed', 'baro.pressure', 'baro.temperature'] },
         imu: { name: 'IMU', children: ['imu.accel', 'imu.gyro', 'imu.orientation'] },
@@ -611,6 +611,9 @@
                     }
                     if (key === 'launch-control') {
                         return Promise.resolve({ ...base, name: 'Launch Control', type: 'starpi.launch-control' });
+                    }
+                    if (key === 'rocket') {
+                        return Promise.resolve({ ...base, name: 'Rocket Attitude', type: 'starpi.rocket' });
                     }
                     if (key === 'commands') {
                         return Promise.resolve({ ...base, name: 'Commands', type: 'starpi.commands' });

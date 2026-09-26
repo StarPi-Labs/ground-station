@@ -49,6 +49,7 @@ const openmct = window.openmct;
     openmct.install(window.StarPiPlugin());
     openmct.install(window.StarPiCommands());
     openmct.install(window.StarPiLaunchControl());
+    openmct.install(window.StarPiRocketView());
 
     // A link to a specific object wins; otherwise open the flight dashboard.
     const linked = Boolean(window.location.hash);

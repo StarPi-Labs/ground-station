@@ -66,7 +66,7 @@ precision, so any standard view can combine them.
 
 | Folder | Contents |
 | --- | --- |
-| Flight (estimated) | Flight phase, mission time, altitude above ground, apogee, max speed/acceleration, distance and bearing from the pad, ground track |
+| Flight (estimated) | Flight phase, parachutes out, mission time, altitude above ground, apogee, max speed/acceleration, distance and bearing from the pad, ground track |
 | Barometer | Altitude (MSL), vertical speed, pressure, temperature |
 | IMU | Acceleration, angular rate, orientation: each opens as X/Y/Z overlaid and expands to the single axes |
 | GPS | Latitude, longitude |
@@ -79,8 +79,8 @@ arrived for 5 s. The real-time window ends 5 s in the future, so fresh packets
 are never dropped by views that ignore data past the window's end.
 
 `starpi-plugin.js` is the telemetry plugin, `flight/` the flight estimates,
-`dashboard/seed.js` the standard dashboard, `commands/` the command panel and
-`launch-control/` the custom dashboard.
+`dashboard/seed.js` the standard dashboard, `commands/` the command panel,
+`launch-control/` the custom dashboard and `rocket/` the 3D attitude view.
 
 ### Flight dashboards
 
@@ -96,6 +96,14 @@ There are two, to compare:
   Flight Dashboard* folder and reload to get the original back.
 * **StarPi › Launch Control** is the custom view: the same data in a
   purpose-built layout, fixed but denser.
+
+**StarPi › Rocket Attitude** (also on the standard dashboard) is a 3D model of
+the rocket turned to its reported orientation, with cues for the estimated
+flight state: an exhaust flame during the burn, a small drogue from apogee and
+the main parachute once the descent slows. Drag to orbit, double-click to
+reset. It takes the IMU's Z as the rocket's long axis and applies the X, Y, Z
+angles in that order (`EULER_ORDER` in `openmct/rocket/rocket-view.js`); one
+fin is blue so the roll shows. three.js comes from npm like Open MCT.
 
 Both follow the time conductor at the bottom: *Real-time* shows the live
 flight, *Fixed* replays any past window. The only custom piece in the standard
@@ -113,6 +121,9 @@ speed, the accelerometer and GPS:
   the vertical speed passes 15 m/s), burnout below 1.2 g, apogee when the
   vertical speed turns negative, landed after 5 s still within 15 m of the
   ground.
+* **Parachutes**: the drogue from apogee; the main once the fall, having been
+  faster than 12 m/s, stays slower than that for 1 s. A single-deploy flight
+  never falls that fast, so it shows as drogue only.
 * **Pad position**: the average GPS fix before launch.
 
 The thresholds live in **My Items › StarPi Flight Dashboard › Flight

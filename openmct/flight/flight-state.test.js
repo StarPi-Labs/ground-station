@@ -151,3 +151,36 @@ test('pad position and distance from it', () => {
     assert.ok(Math.abs(distance - 100) < 0.5, `distance ${distance}`);
     assert.ok(Math.abs(bearing - 90) < 0.1, `bearing ${bearing}`);
 });
+
+test('recovery: drogue from apogee, main once the fall slows', () => {
+    // Dual deploy like the simulator: 25 m/s under the drogue, 6 m/s below 150 m.
+    const tracker = new FlightTracker();
+    const random = rng(3);
+    let h = 0;
+    let mainAt = null;
+    for (let t = 0; t <= 200; t += 0.2) {
+        let v;
+        if (t < APOGEE_T) {
+            ({ h, v } = ideal(t));
+        } else {
+            v = h > 150 ? -25 : -6;
+            h = Math.max(0, h + v * 0.2);
+            if (h === 0) v = 0;
+            if (v === -6 && mainAt === null) mainAt = t;
+        }
+        tracker.update({ t: t * 1000, kind: 'alt', altitude: PAD_ALT + h, speed: v + 0.8 * random() });
+        const { phase, recovery } = tracker.snapshot();
+        if (phase === 'BOOST' || phase === 'COAST') assert.equal(recovery, null);
+    }
+    const s = tracker.snapshot();
+    assert.equal(s.phase, 'LANDED');
+    assert.equal(s.recovery, 'MAIN');
+    assert.ok(Math.abs(s.mainTime - mainAt * 1000) <= 400, `main at ${s.mainTime} vs ${mainAt * 1000}`);
+});
+
+test('recovery: a single slow chute stays the drogue, and a new flight clears it', () => {
+    const s = fly(); // 8 m/s from apogee: never fast, so no main
+    assert.equal(s.recovery, 'DROGUE');
+    assert.equal(s.mainTime, null);
+    assert.equal(new FlightTracker().snapshot().recovery, null);
+});

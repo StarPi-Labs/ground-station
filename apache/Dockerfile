@@ -13,8 +13,10 @@ COPY openmct.conf /usr/local/apache2/conf/sites/openmct.conf
 COPY .htpasswd /usr/local/apache2/conf/.htpasswd
 
 COPY --from=openmct /build/node_modules/openmct/dist /usr/local/apache2/htdocs/openmct/node_modules/openmct/dist
+COPY --from=openmct /build/node_modules/three/build /usr/local/apache2/htdocs/openmct/node_modules/three/build
 COPY --from=site index.html starpi-app.js starpi-plugin.js /usr/local/apache2/htdocs/openmct/
 COPY --from=site flight/flight-state.js flight/flight-service.js /usr/local/apache2/htdocs/openmct/flight/
 COPY --from=site commands/commands-panel.js commands/commands-panel.css /usr/local/apache2/htdocs/openmct/commands/
 COPY --from=site dashboard/seed.js /usr/local/apache2/htdocs/openmct/dashboard/
 COPY --from=site launch-control/charts.js launch-control/launch-control.js launch-control/launch-control.css /usr/local/apache2/htdocs/openmct/launch-control/
+COPY --from=site rocket/rocket-view.js rocket/rocket-view.css /usr/local/apache2/htdocs/openmct/rocket/
