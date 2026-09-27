@@ -4,9 +4,17 @@
 # .env, the shell or the command line: `make up FRONTEND_PORT=9000`.
 
 COMPOSE ?= docker compose
+# Where `make deploy` sends the images, and the CPU they are built for
+# (linux/arm/v7 for a 32-bit Raspberry Pi OS).
+PI ?= starpi.local
+PLATFORM ?= linux/arm64
+IMAGES := starpi/gs-backend:latest starpi/gs-apache:latest
+BUNDLE ?= starpi-images.tar.gz
+# up and sim rebuild by default; BUILD=--no-build runs the images already here.
+BUILD ?= --build
 
 .DEFAULT_GOAL := help
-.PHONY: help up sim down restart build logs ps test setup-bl hotspot
+.PHONY: help up sim down restart build logs ps test setup-bl hotspot images bundle deploy load
 
 help:
 	@echo "make up       build and start the stack on the rocket link (BLE)"
@@ -18,16 +26,22 @@ help:
 	@echo "make ps       show the containers and their health"
 	@echo "make test     run the flight estimation tests"
 	@echo "make hotspot  start a Wi-Fi hotspot on boot (PASSWORD=..., SSID=StarPi)"
+	@echo ""
+	@echo "Pi without internet: build here, run there"
+	@echo "make deploy   build the images for the Pi and load them over SSH (PI=starpi.local)"
+	@echo "make bundle   same images into $(BUNDLE), to carry over by hand"
+	@echo "make load     on the Pi: load $(BUNDLE)"
+	@echo "make up BUILD=--no-build   on the Pi: start from the loaded images (sim too)"
 
 # --wait returns once the backend's healthcheck passes, so a broken start
 # fails here instead of silently in the background.
 up: setup-bl
-	$(COMPOSE) up -d --build --wait
+	$(COMPOSE) up -d $(BUILD) --wait
 	@echo "Open MCT: http://localhost:$${FRONTEND_PORT:-8040}"
 
 # The simulator gets its own database so it never mixes with flight data.
 sim:
-	SP_LINKS=sim SP_DB_PATH=/data/simulator.db $(COMPOSE) up -d --build --wait
+	SP_LINKS=sim SP_DB_PATH=/data/simulator.db $(COMPOSE) up -d $(BUILD) --wait
 	@echo "Open MCT (simulator): http://localhost:$${FRONTEND_PORT:-8040}"
 
 down:
@@ -54,3 +68,32 @@ setup-bl:
 # Host setup, not a container: needs sudo and NetworkManager.
 hotspot:
 	sudo sh scripts/setup-hotspot.sh "$(PASSWORD)" "$(or $(SSID),StarPi)"
+
+# Cross-builds for the Pi, with QEMU running the Pi's programs during the
+# build. The kernel forgets QEMU once the last binfmt_misc mount goes away, and
+# some hosts (NixOS) never mount it, so a helper container holds a mount open
+# for the length of the build and is removed afterwards, even on failure.
+EMU_HOLD := starpi-binfmt-hold
+EMU_ARCH := $(word 2,$(subst /, ,$(PLATFORM)))
+
+images:
+	@docker rm -f $(EMU_HOLD) >/dev/null 2>&1; \
+	trap 'docker rm -f $(EMU_HOLD) >/dev/null 2>&1' EXIT; \
+	docker run -d --rm --privileged --name $(EMU_HOLD) alpine \
+		sh -c 'mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && touch /ready && sleep infinity' >/dev/null && \
+	for i in $$(seq 50); do docker exec $(EMU_HOLD) test -f /ready 2>/dev/null && break; sleep 0.2; done && \
+	docker exec $(EMU_HOLD) test -f /ready && \
+	docker run --privileged --rm tonistiigi/binfmt --install $(EMU_ARCH) >/dev/null && \
+	echo "QEMU ready for $(PLATFORM)" && \
+	DOCKER_DEFAULT_PLATFORM=$(PLATFORM) $(COMPOSE) build
+
+bundle: images
+	docker save $(IMAGES) | gzip > $(BUNDLE)
+	@echo "Copy $(BUNDLE) next to the Makefile on the Pi, then: make load && make up BUILD=--no-build"
+
+deploy: images
+	docker save $(IMAGES) | gzip | ssh $(PI) 'gunzip | docker load'
+	@echo "Images on $(PI). There: make up BUILD=--no-build (or make sim ...)"
+
+load:
+	gunzip -c $(BUNDLE) | docker load

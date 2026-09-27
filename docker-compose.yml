@@ -1,5 +1,7 @@
 services:
   backend:
+    # Named so an image built elsewhere (make deploy) runs here without a rebuild.
+    image: starpi/gs-backend:latest
     build: backend
     restart: unless-stopped
     environment:
@@ -18,6 +20,7 @@ services:
       retries: 3
 
   apache:
+    image: starpi/gs-apache:latest
     build:
       context: apache
       additional_contexts:

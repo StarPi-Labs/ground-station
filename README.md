@@ -61,6 +61,29 @@ graph LR
     A -- serves --> O[Open MCT + StarPi plugin]
 ```
 
+### Pi without internet
+
+`make up` builds the images, which downloads base images and packages. When
+the Pi is offline, build on a computer that is online and ship the images:
+
+```sh
+make deploy PI=pi@starpi.local   # build for the Pi, load the images over SSH
+```
+
+The build runs the Pi's programs under QEMU, which it sets up and removes by
+itself through privileged containers, so it is slower than a native build.
+
+No network path to the Pi? `make bundle` writes `starpi-images.tar.gz`
+instead. Copy it next to the Makefile on the Pi and run `make load` there.
+Either way, start the stack on the Pi without rebuilding:
+
+```sh
+make up BUILD=--no-build    # or: make sim BUILD=--no-build
+```
+
+The images target 64-bit Raspberry Pi OS. For a 32-bit OS, add
+`PLATFORM=linux/arm/v7`.
+
 ### Field Wi-Fi
 
 In the field there is no router, so the Pi can host its own Wi-Fi network:
