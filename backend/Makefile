@@ -46,4 +46,4 @@ dev: setup-bl
 	python src/main.py
 
 setup-bl:
-	sh ./scripts/setup-bluetooth.sh
+	sh ../scripts/setup-bluetooth.sh

@@ -6,7 +6,7 @@ services:
       SP_LINKS: ${SP_LINKS:-ble}
       SP_DB_PATH: ${SP_DB_PATH:-/data/starpi.db}
     volumes:
-      # BlueZ is reached over the host's D-Bus (run backend/scripts/setup-bluetooth.sh first).
+      # BlueZ is reached over the host's D-Bus (run scripts/setup-bluetooth.sh first).
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
       - ./backend/data:/data
     ports:
