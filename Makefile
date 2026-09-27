@@ -6,7 +6,7 @@
 COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := help
-.PHONY: help up sim down restart build logs ps test setup-bl
+.PHONY: help up sim down restart build logs ps test setup-bl hotspot
 
 help:
 	@echo "make up       build and start the stack on the rocket link (BLE)"
@@ -17,6 +17,7 @@ help:
 	@echo "make logs     follow the logs (S=backend for one service)"
 	@echo "make ps       show the containers and their health"
 	@echo "make test     run the flight estimation tests"
+	@echo "make hotspot  start a Wi-Fi hotspot on boot (PASSWORD=..., SSID=StarPi)"
 
 # --wait returns once the backend's healthcheck passes, so a broken start
 # fails here instead of silently in the background.
@@ -49,3 +50,7 @@ test:
 
 setup-bl:
 	$(MAKE) -C backend setup-bl
+
+# Host setup, not a container: needs sudo and NetworkManager.
+hotspot:
+	sudo sh scripts/setup-hotspot.sh "$(PASSWORD)" "$(or $(SSID),StarPi)"

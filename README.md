@@ -61,6 +61,24 @@ graph LR
     A -- serves --> O[Open MCT + StarPi plugin]
 ```
 
+### Field Wi-Fi
+
+In the field there is no router, so the Pi can host its own Wi-Fi network:
+
+```sh
+make hotspot PASSWORD=choose-a-password   # SSID=StarPi by default
+```
+
+From the next boot on, the Pi broadcasts `StarPi` (WPA2, 5 GHz channel 36, to
+stay clear of the 2.4 GHz BLE link) instead of joining another network. Devices
+that join get an address over DHCP and reach the dashboard at
+<http://starpi.local:8040> (or <http://10.42.0.1:8040>) and SSH at
+`starpi.local`; the hotspot's DNS server answers that name. The containers
+restart with Docker on boot, so the dashboard comes back on its own. Saved
+networks stay as a fallback if the hotspot cannot start. `sudo nmcli connection down
+starpi-hotspot` switches back to them until the next boot, and `sudo nmcli
+connection delete starpi-hotspot` removes the hotspot for good.
+
 ### Frontend
 
 `openmct/` holds the Open MCT site. Open MCT itself comes from npm, pinned in
