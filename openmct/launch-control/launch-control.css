@@ -402,7 +402,18 @@
     font-weight: 600;
 }
 
-/* --- attitude ------------------------------------------------------------------------- */
+/* --- attitude (rocket/rocket-view.js embedded, then the dials) ------------------ */
+
+.lc-rocket {
+    height: 18rem;
+}
+
+/* The dials right below already give the angles. */
+.starpi-lc .starpi-rocket .sr-angles {
+    display: none;
+}
+
+/* --- attitude dials ------------------------------------------------------------------------- */
 
 .lc-dials {
     display: grid;

@@ -600,4 +600,6 @@
             });
         };
     };
+    // The view alone, for embedding in other views (Launch Control).
+    window.StarPiRocketView.View = RocketView;
 }());

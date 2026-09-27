@@ -144,7 +144,8 @@ There are two, to compare:
 * **StarPi › Launch Control** is the custom view: the same data in a
   purpose-built layout, fixed but denser.
 
-**StarPi › Rocket Attitude** (also on the standard dashboard) is a 3D model of
+**StarPi › Rocket Attitude** (also on the standard dashboard and in Launch
+Control) is a 3D model of
 the rocket turned to its reported orientation, with cues for the estimated
 flight state: an exhaust flame during the burn, a small drogue from apogee and
 the main parachute once the descent slows. Drag to orbit, double-click to

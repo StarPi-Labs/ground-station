@@ -205,6 +205,8 @@
             </section>
 
             <section class="lc-panel lc-attitude" aria-label="Attitude and environment">
+                <h3 class="lc-title">Attitude</h3>
+                <div class="lc-rocket" data-ref="rocket"></div>
                 <h3 class="lc-title">Orientation <span class="lc-unit">°</span></h3>
                 <div class="lc-dials">${['x', 'y', 'z'].map(dial).join('')}</div>
                 <dl class="lc-pairs lc-pairs--three">
@@ -259,6 +261,8 @@
             this.refs.zero.addEventListener('click', () => this.pinGround(this.tracker.altitude));
             this.refs.unzero.addEventListener('click', () => this.pinGround(null));
             this.commands = new window.StarPiCommandsPanel(this.refs.commands);
+            this.rocket = new window.StarPiRocketView.View(this.openmct);
+            this.rocket.show(this.refs.rocket);
             // Recalibrated thresholds: re-estimate the window with them.
             this.unsubscribers.push(window.StarPi.flight.onSettings(() => this.load()));
 
@@ -281,6 +285,7 @@
             this.unsubscribers.forEach((unsubscribe) => unsubscribe());
             this.timers.forEach((timer) => clearInterval(timer));
             this.commands?.destroy();
+            this.rocket?.destroy();
             this.resize?.disconnect();
             this.openmct.time.off('boundsChanged', this.onBounds);
             this.openmct.time.off('modeChanged', this.onMode);
