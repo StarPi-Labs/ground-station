@@ -23,6 +23,13 @@
     line-height: 1.3;
 }
 
+/* Light mode (theme.js). The chips' state colours carry their own dark text. */
+:root[data-theme="light"] .starpi-rocket {
+    --sr-ink: oklch(0.2 0.01 250);
+    --sr-ink-3: oklch(0.47 0.012 250);
+    --sr-chip: oklch(0.93 0.005 250 / 0.85);
+}
+
 .starpi-rocket .sr-canvas {
     position: absolute;
     inset: 0;
@@ -84,6 +91,7 @@
 
 .starpi-rocket .sr-chip[data-phase="DESCENT"] {
     background: var(--sr-descent);
+    color: oklch(0.97 0.004 250);
 }
 
 .starpi-rocket .sr-chip[data-phase="LANDED"] {

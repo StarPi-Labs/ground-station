@@ -285,6 +285,10 @@
             this.initBasemap();
             // Recalibrated thresholds: re-estimate the window with them.
             this.unsubscribers.push(window.StarPi.flight.onSettings(() => this.load()));
+            // The canvases copy their colours from the stylesheet when drawn.
+            this.unsubscribers.push(window.StarPiTheme.onChange(() => {
+                this.chartsDirty = true;
+            }));
 
             this.resize = new ResizeObserver(() => {
                 this.chartsDirty = true;

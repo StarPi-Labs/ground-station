@@ -58,13 +58,20 @@
         return libsPromise;
     }
 
-    function style(site) {
+    /** The style for `site`, in the dashboard's light or dark flavour, showing `mode`'s layers. */
+    function style(site, mode) {
         // Absolute URLs for MapLibre's workers; built by hand, since URL()
         // would escape the {z}/{x}/{y} placeholders.
         const base = `${location.origin}/tiles/`;
         const { basemaps } = window;
-        const mapLayers = basemaps.layers('protomaps', basemaps.namedFlavor('dark'), { lang: 'en' })
-            .map((layer) => ({ ...layer, metadata: { starpi: 'map' } }));
+        const flavor = window.StarPiTheme.current() === 'light' ? 'light' : 'dark';
+        const visibility = (group) => (group === mode ? 'visible' : 'none');
+        const mapLayers = basemaps.layers('protomaps', basemaps.namedFlavor(flavor), { lang: 'en' })
+            .map((layer) => ({
+                ...layer,
+                metadata: { starpi: 'map' },
+                layout: { ...layer.layout, visibility: visibility('map') }
+            }));
         const style = {
             version: 8,
             glyphs: base + site.map.glyphs,
@@ -89,7 +96,7 @@
                 type: 'raster',
                 source: 'satellite',
                 metadata: { starpi: 'satellite' },
-                layout: { visibility: 'none' }
+                layout: { visibility: visibility('satellite') }
             });
         }
 
@@ -101,6 +108,8 @@
             this.container = container;
             this.mode = 'off';
             this.target = null;
+            // Built with the theme's flavour: rebuild it when the theme changes.
+            this.unsubscribe = window.StarPiTheme.onChange(() => this.restyle());
         }
 
         /** 'off', 'map' or 'satellite'. Rejects if the map could not load. */
@@ -126,9 +135,10 @@
             if (!current) {
                 throw new Error('No offline map: run `make tiles` and rebuild.');
             }
+            this.site = current;
             this.map = new maplibre.Map({
                 container: this.container,
-                style: style(current),
+                style: style(current, this.mode),
                 interactive: false,
                 attributionControl: { compact: true },
                 fadeDuration: 0,
@@ -136,6 +146,12 @@
                 zoom: 14
             });
             this.update();
+        }
+
+        restyle() {
+            if (this.map && !this.destroyed) {
+                this.map.setStyle(style(this.site, this.mode), { diff: false });
+            }
         }
 
         applyMode() {
@@ -153,7 +169,8 @@
             if (this.map.isStyleLoaded()) {
                 apply();
             } else {
-                this.map.once('load', apply);
+                // Also fired after restyle(), unlike 'load'.
+                this.map.once('style.load', apply);
             }
             this.container.classList.toggle('is-satellite', this.mode === 'satellite');
         }
@@ -189,6 +206,7 @@
 
         destroy() {
             this.destroyed = true;
+            this.unsubscribe();
             this.map?.remove();
             this.map = null;
         }

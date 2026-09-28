@@ -29,6 +29,22 @@
     line-height: 1.4;
 }
 
+/* Light mode (theme.js): same roles, contrast kept for daylight. State
+   colours are darker, to read as text on the light panels. */
+:root[data-theme="light"] .starpi-lc {
+    --lc-bg: oklch(0.955 0.004 250);
+    --lc-panel: oklch(0.995 0.002 250);
+    --lc-line: oklch(0.86 0.006 250);
+    --lc-grid: oklch(0.92 0.005 250);
+    --lc-ink: oklch(0.2 0.01 250);
+    --lc-ink-2: oklch(0.34 0.012 250);
+    --lc-ink-3: oklch(0.49 0.012 250);
+    --lc-data: oklch(0.52 0.15 245);
+    --lc-ok: oklch(0.52 0.15 150);
+    --lc-warn: oklch(0.56 0.13 65);
+    --lc-alarm: oklch(0.53 0.2 27);
+}
+
 .starpi-lc *,
 .starpi-lc *::before,
 .starpi-lc *::after {
@@ -153,6 +169,10 @@
 /* Dark text on the state colour; beats the generic .is-* text colours below. */
 .starpi-lc .lc-alert.is-alarm { background: var(--lc-alarm); color: var(--lc-bg); }
 .starpi-lc .lc-alert.is-warn { background: var(--lc-warn); color: var(--lc-bg); }
+
+/* Light mode: white on the alarm red, dark on a banner-bright amber. */
+:root[data-theme="light"] .starpi-lc .lc-alert.is-alarm { color: var(--lc-panel); }
+:root[data-theme="light"] .starpi-lc .lc-alert.is-warn { background: oklch(0.85 0.15 80); color: var(--lc-ink); }
 
 /* --- header: clock, phases, link health ------------------------------------------ */
 
@@ -415,8 +435,8 @@
     background: var(--lc-bg);
 }
 
-/* Imagery is far brighter than the panel: dim it so the track stays readable. */
-.lc-map.is-satellite canvas {
+/* Imagery is far brighter than the dark panel: dim it so the track stays readable. */
+:root:not([data-theme="light"]) .lc-map.is-satellite canvas {
     filter: brightness(0.7) saturate(0.85);
 }
 
@@ -641,6 +661,10 @@
     border-color: var(--lc-alarm);
     background: var(--lc-alarm);
     color: var(--lc-bg);
+}
+
+:root[data-theme="light"] .starpi-lc .sp-cmd .sp-cmd__danger {
+    color: var(--lc-panel);
 }
 
 /* --- buttons ------------------------------------------------------------------------ */
