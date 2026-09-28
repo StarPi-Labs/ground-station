@@ -252,3 +252,11 @@ dashboard for quick checks, which is opt-in — `SP_SERVE_WEB=true` serves it at
 `/`, and `make run-web` does that for you. See
 [backend/README.md](backend/README.md) for the API, the protocol and the full
 list of settings.
+
+## License
+
+StarPi ground station is free software, licensed under the
+[GNU General Public License v3.0](LICENSE). Open MCT, which the frontend is
+built on, is Apache-2.0 (© United States Government, NASA); its notice is in
+[openmct/licenses/openmct.txt](openmct/licenses/openmct.txt), beside the
+licences of the map libraries.
