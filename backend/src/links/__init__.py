@@ -28,9 +28,10 @@ def _ble(on_packet: PacketHandler) -> Link:
 
 
 def _sim(on_packet: PacketHandler) -> Link:
+    from config import config
     from links.sim import SimLink
 
-    return SimLink(on_packet)
+    return SimLink(on_packet, rate=config.sim_rate)
 
 
 REGISTRY: dict[str, LinkFactory] = {

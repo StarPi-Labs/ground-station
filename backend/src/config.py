@@ -61,6 +61,12 @@ class Config:
         default_factory=lambda: float(_env_int("SP_BLE_RECONNECT_DELAY", 5))
     )
 
+    # --- Simulator ---
+    # Total packets per second the sim link sends (the real rocket: ~300).
+    sim_rate: float = field(
+        default_factory=lambda: float(max(1, _env_int("SP_SIM_RATE", 350)))
+    )
+
     # --- Behaviour ---
     # Maximum number of packets a single GET may return.
     max_page_size: int = field(default_factory=lambda: _env_int("SP_MAX_PAGE_SIZE", 1000))

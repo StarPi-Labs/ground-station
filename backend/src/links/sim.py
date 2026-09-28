@@ -39,6 +39,29 @@ DEPLOY_S = 2.0  # time for a parachute to settle the fall to its rate
 WIND_SPEED = 3.0  # horizontal drift while airborne, m/s
 STATUS_PERIOD_S = 5.0
 
+# The mix of message types, as sample rates in Hz: the IMU at the flight
+# firmware's 100 Hz task rate, logging three vectors, and the barometer faster
+# than its 20 Hz task. It is scaled to the total packet rate asked for
+# (SP_SIM_RATE, 350 pkt/s by default, above the real rocket's ~300).
+RATES_HZ: dict[MessageType, float] = {
+    MessageType.T_ACCELLERATION: 100.0,
+    MessageType.T_GYRO: 100.0,
+    MessageType.T_ORIENTATION: 100.0,
+    MessageType.T_ALT_SPEED: 40.0,
+    MessageType.T_PRESSURE: 40.0,
+    MessageType.T_TEMPERATURE: 10.0,
+    MessageType.T_GPS: 10.0,
+}
+
+
+def scaled_rates(total: float) -> dict[MessageType, float]:
+    """RATES_HZ scaled so the message types add up to ``total`` pkt/s."""
+    factor = total / sum(RATES_HZ.values())
+    return {msg_type: hz * factor for msg_type, hz in RATES_HZ.items()}
+
+TICK_S = 0.02  # how often due samples are sent, in a batch like BLE notifications
+MAX_BACKLOG_S = 1.0  # samples older than this are skipped, not replayed
+
 # Launch site: somewhere near Milan, 120 m above sea level.
 PAD_LAT = 45.4642
 PAD_LON = 9.1900
@@ -155,18 +178,23 @@ COMMANDS = {
 class SimLink(Link):
     name = "sim"
 
-    def __init__(self, on_packet: PacketHandler, period: float = 0.2) -> None:
+    def __init__(self, on_packet: PacketHandler, rate: float = 350.0) -> None:
+        """``rate``: total packets per second, spread over the types as in RATES_HZ."""
         super().__init__(on_packet)
-        self._period = period
+        self._rates = scaled_rates(rate)
         self._task: asyncio.Task[None] | None = None
         self._t0 = time.monotonic()
+        # Wall clock at _t0: sample timestamps are placed on their own schedule,
+        # not on the moment a batch happens to be sent.
+        self._wall0_us = time.time_ns() // 1_000
+        self._next_due = {msg_type: self._t0 for msg_type in self._rates}
         self._phase: str | None = None
         self._next_status = 0.0
 
     async def start(self) -> None:
         self._connected = True
         self._task = asyncio.create_task(self._run(), name="sim-link")
-        log.info("simulator link running (period %.2fs)", self._period)
+        log.info("simulator link running (%.0f pkt/s)", sum(self._rates.values()))
 
     async def stop(self) -> None:
         self._connected = False
@@ -180,90 +208,117 @@ class SimLink(Link):
 
     async def _run(self) -> None:
         while True:
-            for message in self._tick():
+            for message in self._due(time.monotonic()):
                 await self._emit(message.to_bytes())
-            await asyncio.sleep(self._period)
+            await asyncio.sleep(TICK_S)
 
-    def _tick(self) -> list[LogMessage]:
-        t = (time.monotonic() - self._t0) % FLIGHT_CYCLE_S
-        timestamp_us = time.time_ns() // 1_000
+    def _due(self, now: float) -> list[LogMessage]:
+        """Every sample whose time has come, oldest first."""
+        samples: list[tuple[float, MessageType]] = []
+        for msg_type, hz in self._rates.items():
+            period = 1.0 / hz
+            due = self._next_due[msg_type]
+            if now - due > MAX_BACKLOG_S:
+                # Fell far behind (a stalled ingest): skip ahead rather than
+                # flood the station with a burst of stale samples.
+                due = now
+            while due <= now:
+                samples.append((due, msg_type))
+                due += period
+            self._next_due[msg_type] = due
+        samples.sort(key=lambda sample: sample[0])
+
+        messages = [self._sample(msg_type, at) for at, msg_type in samples]
+        status = self._status(now)
+        if status is not None:
+            messages.append(status)
+        return messages
+
+    def _timestamp_us(self, at: float) -> int:
+        return self._wall0_us + int((at - self._t0) * 1_000_000)
+
+    def _sample(self, msg_type: MessageType, at: float) -> LogMessage:
+        """One reading of ``msg_type`` taken at monotonic time ``at``."""
+        t = (at - self._t0) % FLIGHT_CYCLE_S
         state = flight_state(t)
         jitter = lambda scale: random.uniform(-scale, scale)  # noqa: E731
 
         def message(
-            src: SourceSubsystem,
-            msg_type: MessageType,
-            payload_type: MessagePayloadType,
-            payload: Any,
+            src: SourceSubsystem, payload_type: MessagePayloadType, payload: Any
         ) -> LogMessage:
-            return LogMessage(timestamp_us, payload_type, src, msg_type, payload)
+            return LogMessage(self._timestamp_us(at), payload_type, src, msg_type, payload)
 
+        # The same noisy altitude feeds every barometer reading.
         altitude = state.altitude + jitter(0.3)
-        accel = state.accel
-        spin = state.spin
-        lat, lon = _offset(PAD_LAT, PAD_LON, north_m=state.drift_m * 0.3, east_m=state.drift_m)
 
-        messages = [
-            message(
+        if msg_type is MessageType.T_ACCELLERATION:
+            return message(
                 SourceSubsystem.S_IMU,
-                MessageType.T_ACCELLERATION,
                 MessagePayloadType.P_FVEC3,
-                {"x": jitter(0.4), "y": jitter(0.4), "z": accel + jitter(0.6)},
-            ),
-            message(
+                {"x": jitter(0.4), "y": jitter(0.4), "z": state.accel + jitter(0.6)},
+            )
+        if msg_type is MessageType.T_GYRO:
+            return message(
                 SourceSubsystem.S_IMU,
-                MessageType.T_GYRO,
                 MessagePayloadType.P_FVEC3,
-                {"x": jitter(2.0) + state.sway * 8.0, "y": jitter(2.0), "z": spin + jitter(2.0)},
-            ),
-            message(
+                {
+                    "x": jitter(2.0) + state.sway * 8.0,
+                    "y": jitter(2.0),
+                    "z": state.spin + jitter(2.0),
+                },
+            )
+        if msg_type is MessageType.T_ORIENTATION:
+            return message(
                 SourceSubsystem.S_IMU,
-                MessageType.T_ORIENTATION,
                 MessagePayloadType.P_FVEC3,
                 {
                     "x": state.sway * 25.0 * math.sin(t * 1.3) + jitter(0.5),
                     "y": state.sway * 25.0 * math.cos(t * 0.9) + jitter(0.5),
                     "z": (state.roll_deg + jitter(0.5)) % 360.0,
                 },
-            ),
-            message(
+            )
+        if msg_type is MessageType.T_ALT_SPEED:
+            return message(
                 SourceSubsystem.S_BARO,
-                MessageType.T_ALT_SPEED,
                 MessagePayloadType.P_FVEC2,
                 {"x": PAD_ALTITUDE_M + altitude, "y": state.speed + jitter(0.4)},
-            ),
-            message(
+            )
+        if msg_type is MessageType.T_PRESSURE:
+            return message(
                 SourceSubsystem.S_BARO,
-                MessageType.T_PRESSURE,
                 MessagePayloadType.P_FLOAT,
                 _pressure_hpa(PAD_ALTITUDE_M + altitude) + jitter(0.05),
-            ),
-            message(
+            )
+        if msg_type is MessageType.T_TEMPERATURE:
+            return message(
                 SourceSubsystem.S_BARO,
-                MessageType.T_TEMPERATURE,
                 MessagePayloadType.P_FLOAT,
                 21.5 - altitude * 0.0065 + jitter(0.1),
-            ),
-            message(
+            )
+        if msg_type is MessageType.T_GPS:
+            lat, lon = _offset(
+                PAD_LAT, PAD_LON, north_m=state.drift_m * 0.3, east_m=state.drift_m
+            )
+            return message(
                 SourceSubsystem.S_GPS,
-                MessageType.T_GPS,
                 MessagePayloadType.P_FVEC2,
                 {"x": lat + jitter(0.00002), "y": lon + jitter(0.00002)},
-            ),
-        ]
+            )
+        raise ValueError(f"simulator cannot produce {msg_type.name}")
 
-        # Syslog on every phase change, plus a heartbeat every few seconds.
+    def _status(self, now: float) -> LogMessage | None:
+        """Syslog on every phase change, plus a heartbeat every few seconds."""
+        t = (now - self._t0) % FLIGHT_CYCLE_S
+        state = flight_state(t)
+        timestamp_us = self._timestamp_us(now)
         if state.phase != self._phase:
             self._phase = state.phase
             self._next_status = t + STATUS_PERIOD_S
-            messages.append(self._syslog(timestamp_us, f"phase {state.phase}"))
-        elif t >= self._next_status:
+            return self._syslog(timestamp_us, f"phase {state.phase}")
+        if t >= self._next_status:
             self._next_status = t + STATUS_PERIOD_S
-            messages.append(
-                self._syslog(timestamp_us, f"{state.phase.lower()} alt {altitude:.1f} m")
-            )
-
-        return messages
+            return self._syslog(timestamp_us, f"{state.phase.lower()} alt {state.altitude:.1f} m")
+        return None
 
     @staticmethod
     def _syslog(timestamp_us: int, text: str) -> LogMessage:

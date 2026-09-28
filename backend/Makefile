@@ -37,6 +37,7 @@ run-sim:
 		-p $(PORT):8000 \
 		-e SP_LINKS=sim \
 		-e SP_DB_PATH=/data/simulator.db \
+		-e SP_SIM_RATE=$(or $(SP_SIM_RATE),350) \
 		-e SP_SERVE_WEB=true \
 		-it \
 		$(TAG):$(VERSION)
