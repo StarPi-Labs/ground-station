@@ -255,19 +255,31 @@
 
     /**
      * Pad-centred plan view: range rings, north up, the ground track and the
-     * rocket's current position.
+     * rocket's current position. With `onMap` the canvas sits over a map
+     * (basemap.js): rings get brighter and everything a dark halo.
      *
-     * @param {object} spec  pad {lat, lon} | null, track [{lat, lon}], fix {lat, lon} | null
+     * @param {object} spec  pad {lat, lon} | null, track [{lat, lon}], fix {lat, lon} | null, onMap
      * @param {function} offset  (from, to) -> {east, north} metres
+     * @returns {{scale: number} | null}  pixels per metre, null before the pad is known
      */
     function drawRange(canvas, spec, offset) {
         const { ctx, width, height } = prepare(canvas);
         const root = canvas.closest('.starpi-lc') || document.body;
-        const ink = cssVar(root, '--lc-ink-3');
-        const grid = cssVar(root, '--lc-grid');
+        const ink = cssVar(root, spec.onMap ? '--lc-ink-2' : '--lc-ink-3');
+        const grid = cssVar(root, spec.onMap ? '--lc-ink-3' : '--lc-grid');
         const line = cssVar(root, '--lc-data');
         const strong = cssVar(root, '--lc-ink');
+        const halo = cssVar(root, '--lc-bg');
         const font = cssVar(root, '--lc-font');
+        const label = (text, x, y) => {
+            if (spec.onMap) {
+                ctx.strokeStyle = halo;
+                ctx.lineWidth = 3;
+                ctx.lineJoin = 'round';
+                ctx.strokeText(text, x, y);
+            }
+            ctx.fillText(text, x, y);
+        };
 
         const cx = width / 2;
         const cy = height / 2;
@@ -280,7 +292,7 @@
             ctx.textBaseline = 'middle';
             ctx.fillText('Waiting for a GPS fix', cx, cy);
 
-            return;
+            return null;
         }
 
         const points = spec.track.map((p) => offset(spec.pad, p));
@@ -294,20 +306,21 @@
         const outer = Math.ceil(reach / ring) * ring;
         const scale = radius / outer;
 
-        ctx.lineWidth = 1;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'bottom';
         for (let r = ring; r <= outer + 1e-6; r += ring) {
             ctx.strokeStyle = grid;
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.arc(cx, cy, r * scale, 0, Math.PI * 2);
             ctx.stroke();
             ctx.fillStyle = ink;
-            ctx.fillText(r >= 1000 ? `${(r / 1000).toFixed(1)} km` : `${r} m`, cx + r * scale * 0.71 + 3, cy - r * scale * 0.71);
+            label(r >= 1000 ? `${(r / 1000).toFixed(1)} km` : `${r} m`, cx + r * scale * 0.71 + 3, cy - r * scale * 0.71);
         }
 
         // Crosshair and north marker.
         ctx.strokeStyle = grid;
+        ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(cx - radius, cy);
         ctx.lineTo(cx + radius, cy);
@@ -317,7 +330,7 @@
         ctx.fillStyle = strong;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText('N', cx, cy - radius - 1);
+        label('N', cx, cy - radius - 1);
 
         // Pad.
         ctx.strokeStyle = strong;
@@ -328,11 +341,16 @@
         const py = (p) => cy - p.north * scale;
 
         if (points.length > 1) {
-            ctx.strokeStyle = line;
-            ctx.lineWidth = 1.75;
             ctx.lineJoin = 'round';
             ctx.beginPath();
             points.forEach((p, i) => (i ? ctx.lineTo(px(p), py(p)) : ctx.moveTo(px(p), py(p))));
+            if (spec.onMap) {
+                ctx.strokeStyle = halo;
+                ctx.lineWidth = 4.5;
+                ctx.stroke();
+            }
+            ctx.strokeStyle = line;
+            ctx.lineWidth = 1.75;
             ctx.stroke();
         }
 
@@ -342,7 +360,14 @@
             ctx.beginPath();
             ctx.arc(px(here), py(here), 4.5, 0, Math.PI * 2);
             ctx.fill();
+            if (spec.onMap) {
+                ctx.strokeStyle = halo;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
         }
+
+        return { scale };
     }
 
     window.StarPiCharts = { drawStrip, drawRange, niceStep };

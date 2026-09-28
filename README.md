@@ -169,6 +169,47 @@ reset. It takes the IMU's Z as the rocket's long axis and applies the X, Y, Z
 angles in that order (`EULER_ORDER` in `openmct/rocket/rocket-view.js`); one
 fin is blue so the roll shows. three.js comes from npm like Open MCT.
 
+### Offline launch site map
+
+Launch Control's *Position from pad* plot can sit over a map of the launch
+site: switch it between **Off**, **Map** (OpenStreetMap) and **Satellite**
+above the plot. The choice is remembered per browser. The map follows the
+plot, centred on the pad and at the rings' scale; it cannot be panned.
+
+Nothing is fetched at the field. `make tiles` downloads the site once, on a
+computer with internet and Docker, into `openmct/tiles/`, and the next image
+build (`make up`, `make deploy`, ...) includes it:
+
+```sh
+make tiles LAT=45.4642 LON=9.1900 RADIUS=5   # defaults: the simulator's pad, 5 km
+make up                                      # or make deploy PI=...
+```
+
+* **Map**: an extract of the [Protomaps](https://protomaps.com) daily
+  OpenStreetMap build (vector tiles in one `map.pmtiles`, a few MB for 10 km
+  across, ~12 MB for a city centre), drawn by MapLibre GL with Protomaps' dark
+  style. Its fonts and icons are downloaded alongside. The browser loads
+  MapLibre (~1 MB) only once a map is switched on.
+* **Satellite**: raster tiles, by default EOX's
+  [Sentinel-2 cloudless](https://s2maps.eu) (CC BY-NC-SA 4.0). It is free and
+  worldwide but only 10 m per pixel, so fields show and a pad doesn't. For
+  more detail, point `SAT_URL` at a sharper source you are allowed to store,
+  such as your country's open orthophotos, and set `SAT_MAXZOOM` and
+  `SAT_ATTRIBUTION` to match (`SAT_URL=` skips satellite). See
+  `scripts/fetch-tiles.py`.
+
+Without `openmct/tiles/site.json` there is no toggle and the plot is drawn on
+its own, as before. The downloaded files are not committed.
+
+Licences: the map shows its credits in the corner (the ⓘ button). OpenStreetMap
+data is under the ODbL, Protomaps' style is CC0, the Noto Sans label font is
+under the SIL OFL and the icons are MIT; `make tiles` writes all of them to
+`openmct/tiles/LICENSES.md`, with the font and icon licence texts beside their
+files. The default satellite imagery is **non-commercial only** (CC BY-NC-SA
+4.0); set `SAT_LICENSE` with your own source. MapLibre, pmtiles and
+@protomaps/basemaps are BSD-3-Clause; their texts are in `openmct/licenses/`,
+served at `/licenses/`.
+
 Both follow the time conductor at the bottom: *Real-time* shows the live
 flight, *Fixed* replays any past window. The only custom piece in the standard
 dashboard is **Commands** (Open MCT has no commanding UI without YAMCS): each

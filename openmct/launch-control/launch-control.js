@@ -40,6 +40,8 @@
     const RENDER_MS = 200;
     const MAX_LOG = 200;
     const GROUND_KEY = 'starpi.launch-control.ground';
+    const BASEMAP_KEY = 'starpi.launch-control.basemap';
+    const BASEMAP_LABELS = { off: 'Off', map: 'Map', satellite: 'Satellite' };
 
     // --- formatting ------------------------------------------------------------
 
@@ -92,26 +94,30 @@
         })[c]);
     }
 
-    function readGround() {
+    function readStored(key) {
         try {
-            const value = JSON.parse(localStorage.getItem(GROUND_KEY));
-
-            return Number.isFinite(value) ? value : null;
+            return JSON.parse(localStorage.getItem(key));
         } catch (error) {
             return null;
         }
     }
 
-    function writeGround(value) {
+    function writeStored(key, value) {
         try {
             if (value === null) {
-                localStorage.removeItem(GROUND_KEY);
+                localStorage.removeItem(key);
             } else {
-                localStorage.setItem(GROUND_KEY, JSON.stringify(value));
+                localStorage.setItem(key, JSON.stringify(value));
             }
         } catch (error) {
-            // Private window or blocked storage: the pin just won't survive a reload.
+            // Private window or blocked storage: the choice just won't survive a reload.
         }
+    }
+
+    function readGround() {
+        const value = readStored(GROUND_KEY);
+
+        return Number.isFinite(value) ? value : null;
     }
 
     // --- markup ------------------------------------------------------------------
@@ -197,8 +203,17 @@
             </section>
 
             <section class="lc-panel lc-gps" aria-label="Position">
-                <h3 class="lc-title">Position from pad</h3>
-                <canvas class="lc-range" data-ref="range"></canvas>
+                <div class="lc-title-row">
+                    <h3 class="lc-title">Position from pad</h3>
+                    <div class="lc-toggle" data-ref="basemap-modes" role="group" aria-label="Background map" hidden>
+                        ${Object.entries(BASEMAP_LABELS).map(([mode, label]) => `
+                            <button type="button" class="lc-toggle__option" data-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}
+                    </div>
+                </div>
+                <div class="lc-range">
+                    <div class="lc-map" data-ref="map" hidden></div>
+                    <canvas data-ref="range"></canvas>
+                </div>
                 <dl class="lc-pairs">
                     <div><dt>Distance</dt><dd class="lc-num" data-ref="gps-distance">—</dd></div>
                     <div><dt>Bearing</dt><dd class="lc-num" data-ref="gps-bearing">—</dd></div>
@@ -266,6 +281,8 @@
             this.commands = new window.StarPiCommandsPanel(this.refs.commands);
             this.rocket = new window.StarPiRocketView.View(this.openmct);
             this.rocket.show(this.refs.rocket);
+            this.basemap = new window.StarPiBasemap.Basemap(this.refs.map);
+            this.initBasemap();
             // Recalibrated thresholds: re-estimate the window with them.
             this.unsubscribers.push(window.StarPi.flight.onSettings(() => this.load()));
 
@@ -289,10 +306,47 @@
             this.timers.forEach((timer) => clearInterval(timer));
             this.commands?.destroy();
             this.rocket?.destroy();
+            this.basemap?.destroy();
             this.resize?.disconnect();
             this.openmct.time.off('boundsChanged', this.onBounds);
             this.openmct.time.off('modeChanged', this.onMode);
             this.openmct.time.off('clockChanged', this.onMode);
+        }
+
+        /** The map toggle appears only once `make tiles` has put a site in the image. */
+        async initBasemap() {
+            const site = await window.StarPiBasemap.site();
+            if (!site || this.destroyed) {
+                return;
+            }
+            const modes = this.refs.basemapModes;
+            modes.hidden = false;
+            modes.querySelector('[data-mode="satellite"]').hidden = !site.satellite;
+            modes.addEventListener('click', (event) => {
+                const mode = event.target.closest('[data-mode]')?.dataset.mode;
+                if (mode) {
+                    this.setBasemap(mode, site);
+                }
+            });
+            this.setBasemap(readStored(BASEMAP_KEY) ?? 'off', site);
+        }
+
+        setBasemap(mode, site) {
+            if (!(mode in BASEMAP_LABELS) || (mode === 'satellite' && !site.satellite)) {
+                mode = 'off';
+            }
+            writeStored(BASEMAP_KEY, mode);
+            this.refs.basemapModes.querySelectorAll('[data-mode]').forEach((button) => {
+                button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+            });
+            this.basemap.setMode(mode).catch((error) => {
+                console.error('StarPi: offline map unavailable', error);
+                if (!this.destroyed) {
+                    this.setBasemap('off', site);
+                }
+            });
+            // Redraw the range plot in its on-map colours.
+            this.chartsDirty = true;
         }
 
         // --- data ------------------------------------------------------------
@@ -460,7 +514,7 @@
             if (altitude !== null && !Number.isFinite(altitude)) {
                 return;
             }
-            writeGround(altitude);
+            writeStored(GROUND_KEY, altitude);
             this.tracker.setGround(altitude);
             this.chartsDirty = true;
             this.render();
@@ -630,7 +684,9 @@
             const key = flight.fix ? `${flight.fix.t}` : 'none';
             if (key !== this.rangeKey || this.chartsDirty) {
                 this.rangeKey = key;
-                window.StarPiCharts.drawRange(refs.range, flight, window.StarPiFlight.localOffset);
+                const onMap = this.basemap.mode !== 'off';
+                const range = window.StarPiCharts.drawRange(refs.range, { ...flight, onMap }, window.StarPiFlight.localOffset);
+                this.basemap.view(range && flight.pad, range && 1 / range.scale);
             }
         }
 

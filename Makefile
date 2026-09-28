@@ -14,7 +14,7 @@ BUNDLE ?= starpi-images.tar.gz
 BUILD ?= --build
 
 .DEFAULT_GOAL := help
-.PHONY: help up sim pi down restart build logs ps test setup-bl hotspot lan images bundle deploy load
+.PHONY: help up sim pi down restart build logs ps test setup-bl hotspot lan tiles images bundle deploy load
 
 help:
 	@echo "make up       build and start the stack on the rocket link (BLE)"
@@ -27,6 +27,7 @@ help:
 	@echo "make test     run the flight estimation tests"
 	@echo "make hotspot  start a Wi-Fi hotspot on boot (PASSWORD=..., SSID=StarPi)"
 	@echo "make lan      serve a network on the Ethernet port, for a direct cable (IFACE=eth0)"
+	@echo "make tiles    download the offline launch site map (LAT=... LON=... RADIUS=5 km), then rebuild"
 	@echo ""
 	@echo "Pi without internet: build here, run there"
 	@echo "make deploy   build the images for the Pi and load them over SSH (PI=starpi.local)"
@@ -78,6 +79,16 @@ hotspot:
 
 lan:
 	sudo sh scripts/setup-lan.sh "$(or $(IFACE),eth0)"
+
+# Offline map for Launch Control, baked into the frontend image by the next
+# build. Needs internet and Docker (the pmtiles CLI runs from its image). The
+# default site is the simulator's pad (backend/src/links/sim.py).
+LAT ?= 45.4642
+LON ?= 9.1900
+RADIUS ?= 5
+
+tiles:
+	python3 scripts/fetch-tiles.py $(LAT) $(LON) $(RADIUS)
 
 # Cross-builds for the Pi, with QEMU running the Pi's programs during the
 # build. The kernel forgets QEMU once the last binfmt_misc mount goes away, and

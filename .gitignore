@@ -2,3 +2,5 @@
 .env
 openmct/node_modules/
 starpi-images.tar.gz
+openmct/tiles/*
+!openmct/tiles/README.md

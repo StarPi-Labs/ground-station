@@ -375,11 +375,100 @@
 
 /* --- GPS ------------------------------------------------------------------------------- */
 
+.lc-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 12px;
+}
+
+/* Canvas over the offline map (basemap.js), both filling the same box so the
+   pad sits at the centre of each. */
 .lc-range {
-    display: block;
+    position: relative;
     width: 100%;
     aspect-ratio: 1;
     max-height: 22rem;
+}
+
+/* .starpi-lc: MapLibre's stylesheet, loaded later, makes the map relative. */
+.lc-range canvas,
+.starpi-lc .lc-map {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Over the map, but under its credits (z-index 2 in MapLibre's stylesheet),
+   which stay clickable. */
+.lc-range canvas {
+    display: block;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.lc-map {
+    overflow: hidden;
+    border-radius: 4px;
+    background: var(--lc-bg);
+}
+
+/* Imagery is far brighter than the panel: dim it so the track stays readable. */
+.lc-map.is-satellite canvas {
+    filter: brightness(0.7) saturate(0.85);
+}
+
+/* Open MCT's styles leave MapLibre's control container relative and 0 px
+   tall, which puts the credits above the map. */
+.starpi-lc .lc-map .maplibregl-control-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.starpi-lc .lc-map .maplibregl-ctrl-attrib {
+    background: color-mix(in oklch, var(--lc-bg) 80%, transparent);
+    color: var(--lc-ink-3);
+    font-size: 10px;
+}
+
+.starpi-lc .lc-map .maplibregl-ctrl-attrib a {
+    color: var(--lc-ink-2);
+}
+
+.lc-toggle {
+    display: inline-flex;
+    border: 1px solid var(--lc-line);
+    border-radius: 4px;
+}
+
+.lc-toggle__option {
+    padding: 3px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--lc-ink-3);
+    font: 600 12px/1.3 var(--lc-font);
+    cursor: pointer;
+}
+
+.lc-toggle__option + .lc-toggle__option {
+    border-left: 1px solid var(--lc-line);
+}
+
+.lc-toggle__option:hover {
+    color: var(--lc-ink);
+}
+
+.lc-toggle__option[aria-pressed="true"] {
+    background: var(--lc-ink);
+    color: var(--lc-bg);
+}
+
+.lc-toggle__option:focus-visible {
+    outline: 2px solid var(--lc-data);
+    outline-offset: 1px;
 }
 
 .lc-pairs {
