@@ -114,8 +114,20 @@
         },
         'station.rate': { name: 'Packet rate', unit: 'pkt/s', precision: 0 },
         'station.errors': { name: 'Errors', precision: 0 },
-        'station.dropped': { name: 'Dropped events', precision: 0 }
+        'station.dropped': { name: 'Dropped events', precision: 0 },
+        // The backend's integrity check of its database, run at startup.
+        'station.storage': {
+            name: 'Database',
+            format: 'enum',
+            enumerations: [
+                { value: 0, string: 'CORRUPT' },
+                { value: 1, string: 'CHECKING' },
+                { value: 2, string: 'OK' }
+            ]
+        }
     };
+
+    const STORAGE_STATES = { corrupt: 0, checking: 1, ok: 2 };
 
     // Folder tree. The flight folder's children come from flight-service.js.
     const FOLDERS = {
@@ -527,7 +539,8 @@
                 'station.link': !this.ok ? 0 : up ? 2 : 1,
                 'station.rate': this.stream.packetRate(),
                 'station.errors': this.health ? this.health.decode_errors + this.health.store_errors : undefined,
-                'station.dropped': this.health?.dropped_events
+                'station.dropped': this.health?.dropped_events,
+                'station.storage': STORAGE_STATES[this.health?.storage?.state]
             };
         }
 

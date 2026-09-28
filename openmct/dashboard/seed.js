@@ -116,7 +116,9 @@
         });
 
         const alarmSet = add('conditionSet', 'starpi-cs-alarm', 'Alarm conditions', folder, {
-            composition: [sp('station.link'), sp('baro.altitude'), sp('flight.phase'), sp('baro.speed')],
+            composition: [
+                sp('station.link'), sp('baro.altitude'), sp('flight.phase'), sp('baro.speed'), sp('station.storage')
+            ],
             configuration: {
                 conditionCollection: [
                     condition('alarm-offline', 'BACKEND OFFLINE', [
@@ -132,6 +134,10 @@
                     condition('alarm-descent', 'DESCENT TOO FAST', [
                         criterion('alarm-descent-phase', sp('flight.phase'), 'enumValueIs', [phaseIndex('DESCENT')]),
                         criterion('alarm-descent-speed', sp('baro.speed'), 'lessThan', ['-35'])
+                    ]),
+                    // History fails on a corrupt file, while live data still flows.
+                    condition('alarm-storage', 'DATABASE CORRUPT', [
+                        criterion('alarm-storage-c', sp('station.storage'), 'enumValueIs', ['0'])
                     ]),
                     defaultCondition('alarm-default', 'NOMINAL')
                 ]
@@ -165,6 +171,7 @@
                     'alarm-link': STYLE.alarm,
                     'alarm-stale': STYLE.warn,
                     'alarm-descent': STYLE.alarm,
+                    'alarm-storage': STYLE.warn,
                     'alarm-default': STYLE.ok
                 })
             }

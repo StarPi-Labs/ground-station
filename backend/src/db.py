@@ -123,6 +123,19 @@ class Database:
         finally:
             self._readers.put_nowait(reader)
 
+    async def quick_check(self, max_problems: int = 20) -> list[str]:
+        """SQLite's structural check of the whole file: ``[]`` when it is sound.
+
+        Otherwise SQLite's findings, at most ``max_problems`` of them. It reads
+        every page (~2 s for 400 MB on the Pi), so it runs on a reader and the
+        writer carries on meanwhile.
+        """
+        async with self._reader() as conn:
+            async with conn.execute(f"PRAGMA quick_check({int(max_problems)})") as cursor:
+                rows = await cursor.fetchall()
+        problems = [row[0] for row in rows]
+        return [] if problems == ["ok"] else problems
+
     # --- packets -----------------------------------------------------------
 
     async def next_packet_id(self) -> int:

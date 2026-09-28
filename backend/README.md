@@ -180,6 +180,12 @@ link name closes the socket with `1008` after an `error` event.
 `GET /api/health`, `GET /api/links`, and `GET /api/enums` (enum names, bit flags
 and wire indices, so clients need not hardcode the protocol).
 
+At startup the backend runs SQLite's `PRAGMA quick_check` over the database in
+the background (ingest does not wait for it). `storage` in `/api/health` reports
+`state` as `checking`, `ok` or `corrupt`, with SQLite's findings in `problems`;
+a corrupt file is also logged as an error. A corrupt database still takes live
+packets, but history queries that reach its damaged pages fail with a 500.
+
 ## Protocol
 
 `src/protocol.py` implements the frame described in `spec/Proto.hpp`:

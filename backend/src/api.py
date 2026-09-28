@@ -96,6 +96,7 @@ def create_app(station: Station | None = None) -> FastAPI:
             "dropped_events": st.hub.dropped_events,
             "decode_errors": st.decode_errors,
             "store_errors": st.store_errors,
+            "storage": st.storage_status(),
         }
 
     @app.get("/api/enums", tags=["meta"])

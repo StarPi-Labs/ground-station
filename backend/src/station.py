@@ -15,6 +15,7 @@ id before it is stored.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -45,6 +46,10 @@ class Station:
         #: from decode errors: a storage outage is a different fault to a bad
         #: frame, and /api/health reports them separately.
         self.store_errors = 0
+        #: Findings of the startup integrity check: None while it runs, []
+        #: when the database file is sound.
+        self.storage_problems: list[str] | None = None
+        self._storage_check: asyncio.Task[None] | None = None
         # Published packets waiting for the writer, and their raw frames.
         self._pending: list[dict[str, Any]] = []
         self._pending_raw: list[bytes] = []
@@ -61,6 +66,8 @@ class Station:
         self._next_id = await self.db.next_packet_id()
         self._stopping = False
         self._writer = asyncio.create_task(self._write_loop(), name="packet-writer")
+        self.storage_problems = None
+        self._storage_check = asyncio.create_task(self._check_storage(), name="storage-check")
 
         for name in self.config.links:
             try:
@@ -84,6 +91,11 @@ class Station:
             except Exception:  # noqa: BLE001
                 log.exception("link %r failed to stop cleanly", link.name)
         self.links.clear()
+        if self._storage_check is not None:
+            self._storage_check.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._storage_check
+            self._storage_check = None
         if self._writer is not None:
             # Not cancelled: a batch cut off mid-write would be lost. The
             # writer drains the queue and returns once it sees the flag.
@@ -92,6 +104,32 @@ class Station:
             await self._writer
             self._writer = None
         await self.db.close()
+
+    async def _check_storage(self) -> None:
+        """Check the database file once, in the background.
+
+        A corrupt file still takes inserts but fails the history queries that
+        reach its bad pages, which the frontend only sees as HTTP 500s; this
+        says why, in the log and in /api/health. Not awaited in start(): the
+        check reads the whole file, and ingest must not wait for it.
+        """
+        try:
+            problems = await self.db.quick_check()
+        except Exception as exc:  # noqa: BLE001 - a file too damaged to check
+            problems = [f"check failed: {exc}"]
+        self.storage_problems = problems
+        if problems:
+            log.error(
+                "database %s is corrupt, history queries may fail: %s",
+                self.config.db_path, "; ".join(problems[:5]),
+            )
+        else:
+            log.info("database %s passed its integrity check", self.config.db_path)
+
+    def storage_status(self) -> dict[str, Any]:
+        problems = self.storage_problems
+        state = "checking" if problems is None else "corrupt" if problems else "ok"
+        return {"state": state, "problems": problems or []}
 
     # --- ingest ------------------------------------------------------------
 
