@@ -308,8 +308,15 @@
             return changed;
         }
 
+        /** The container's size, as its ResizeObserver reports it. */
+        setSize(width, height) {
+            this.size = { width: Math.round(width), height: Math.round(height) };
+        }
+
         resize() {
-            const { clientWidth: width, clientHeight: height } = this.container;
+            // Not read from the container: measuring it every frame forced the
+            // browser to lay out the whole, constantly changing, dashboard first.
+            const { width, height } = this.size ?? {};
             if (!width || !height) {
                 return false;
             }
@@ -459,7 +466,11 @@
                 }
                 this.bindOrbit(this.refs.stage);
                 // Layouts size the view after it is shown, and resize it later.
-                this.resize = new ResizeObserver(() => this.requestFrame());
+                this.resize = new ResizeObserver((entries) => {
+                    const { width, height } = entries[entries.length - 1].contentRect;
+                    this.scene.setSize(width, height);
+                    this.requestFrame();
+                });
                 this.resize.observe(this.refs.stage);
                 this.apply();
             }, (error) => {
@@ -475,6 +486,7 @@
             this.destroyed = true;
             this.generation += 1;
             cancelAnimationFrame(this.frame);
+            cancelAnimationFrame(this.applyFrame);
             this.resize?.disconnect();
             clearInterval(this.staleTimer);
             this.unsubscribers.forEach((unsubscribe) => unsubscribe());
@@ -562,7 +574,12 @@
 
         update(name, datum) {
             this.latest[name] = datum;
-            this.apply();
+            // Orientation arrives faster than the screen refreshes: apply the
+            // newest values once per frame instead of on every packet.
+            this.applyFrame ??= requestAnimationFrame(() => {
+                this.applyFrame = null;
+                this.apply();
+            });
         }
 
         /** Push the latest values into the scene and the overlay. */

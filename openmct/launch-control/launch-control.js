@@ -22,6 +22,9 @@
         gps: 'T_GPS',
         log: 'T_SYSLOG'
     };
+    // Sources shown only as their latest value (see ingest()): their history
+    // would be up to 90 000 packets per load, for one number each.
+    const LATEST_ONLY = new Set(['gyro', 'orient', 'pressure', 'temp']);
 
     const PHASE_LABELS = {
         PAD: 'On pad',
@@ -355,10 +358,15 @@
             let results;
             try {
                 results = await Promise.all(Object.entries(this.objects).map(async ([name, object]) => {
-                    const data = await this.openmct.telemetry.request(object, {
-                        start: bounds.start,
-                        end: bounds.end
-                    });
+                    const options = { start: bounds.start, end: bounds.end };
+                    if (LATEST_ONLY.has(name)) {
+                        Object.assign(options, { strategy: 'latest', size: 1 });
+                    }
+                    let data = await this.openmct.telemetry.request(object, options);
+                    if (LATEST_ONLY.has(name)) {
+                        // 'latest' looks back past the window's start; the view does not.
+                        data = data.filter((datum) => datum.utc >= bounds.start);
+                    }
 
                     return [name, data];
                 }));

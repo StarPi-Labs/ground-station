@@ -142,6 +142,44 @@
         return value === null || value === undefined || Number.isNaN(value) ? null : { utc: t, value };
     }
 
+    /**
+     * Open MCT's 'minmax' for computed rows ({ utc, value }, oldest first): the
+     * range cut into size / 2 buckets, each keeping its lowest and highest
+     * value, so peaks survive. Mirrors GET /api/packets/minmax.
+     */
+    function minmax(rows, start, end, size) {
+        if (rows.length <= size) {
+            return rows;
+        }
+        const width = Math.max(1, (end - start) / Math.max(1, Math.floor(size / 2)));
+        const out = [];
+        let bucket = null;
+        let low = null;
+        let high = null;
+        const close = () => {
+            if (!low) {
+                return;
+            }
+            out.push(...(low === high ? [low] : low.utc <= high.utc ? [low, high] : [high, low]));
+        };
+        for (const row of rows) {
+            const b = Math.floor((row.utc - start) / width);
+            if (b !== bucket) {
+                close();
+                bucket = b;
+                low = row;
+                high = row;
+            } else if (row.value < low.value) {
+                low = row;
+            } else if (row.value > high.value) {
+                high = row;
+            }
+        }
+        close();
+
+        return out;
+    }
+
     /** Tracker input from a backend packet. */
     function sample(kind, packet) {
         const t = Math.floor(packet.timestamp_us / 1000);
@@ -351,8 +389,15 @@
             const end = options.end ?? Date.now();
             const start = options.start ?? end - LOOKBACK_MS;
             const rows = (await this.replay(start, end))[key];
+            if (options.strategy === 'latest') {
+                return rows.slice(-1);
+            }
+            // Plots ask for 'minmax': the replay yields a row per 100 Hz sample.
+            if (options.strategy === 'minmax' && options.size > 0 && !this.points[key].datum) {
+                return minmax(rows, start, end, options.size);
+            }
 
-            return options.strategy === 'latest' ? rows.slice(-1) : rows;
+            return rows;
         }
 
         // --- settings ------------------------------------------------------------------
@@ -378,11 +423,15 @@
         }
 
         applySettings(configuration = {}) {
-            const next = { ...configuration };
-            if (JSON.stringify(next) === JSON.stringify(this.settings)) {
+            // Compare what the tracker would run with, not the raw form: the
+            // settings object usually holds the defaults, and restarting for
+            // it re-fetched minutes of history on every page load.
+            const effective = () => JSON.stringify({ ...window.StarPiFlight.DEFAULTS, ...this.options() });
+            const before = effective();
+            this.settings = { ...configuration };
+            if (effective() === before) {
                 return;
             }
-            this.settings = next;
             this.restart();
             this.settingsListeners.forEach((callback) => callback(this.options()));
         }

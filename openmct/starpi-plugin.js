@@ -26,13 +26,18 @@
     // Upper bound on GET /api/packets?limit=, matches SP_MAX_PAGE_SIZE.
     const PAGE_SIZE = 1000;
     // Stop paging after this many packets per request, so a wide time range
-    // cannot freeze the browser.
-    const MAX_HISTORY = 50000;
+    // cannot freeze the browser. Holds the default 15-minute window of an IMU
+    // message type at 100 Hz (90 000 packets).
+    const MAX_HISTORY = 95000;
     // A telemetry object is stale when its message type has not arrived for this long.
     const STALE_MS = 5000;
     const HEALTH_POLL_MS = 2000;
     const HEALTH_TIMEOUT_MS = 1500;
     const API_TIMEOUT_MS = 8000;
+    // Live data reaches Open MCT views in batches this often. The rocket sends
+    // ~300 pkt/s: one callback per packet had every plot re-sort and redraw
+    // hundreds of times a second.
+    const BATCH_MS = 50;
 
     // --- dictionary ------------------------------------------------------------
 
@@ -231,30 +236,36 @@
         return String(Math.floor(ms * 1000));
     }
 
+    /** Packets of one type in [start, end], oldest first. */
     async function fetchRange(type, start, end) {
-        const packets = [];
-        let offset = 0;
-        while (offset < MAX_HISTORY) {
-            // No total: counting every page doubled the backend's work, and a
-            // short page already marks the end.
-            const params = new URLSearchParams({
-                type, order: 'asc', limit: String(PAGE_SIZE), offset: String(offset), with_total: 'false'
-            });
-            if (start !== undefined) {
-                params.set('since_us', micros(start));
-            }
-            if (end !== undefined) {
-                params.set('until_us', micros(end));
-            }
+        // Paged newest first, so a range past MAX_HISTORY loses its old end
+        // rather than the recent one. Each page continues from the last
+        // packet of the previous one (after_id): offset paging slowed down
+        // with every page. No total: a short page already marks the end.
+        const params = new URLSearchParams({
+            type, order: 'desc', limit: String(PAGE_SIZE), with_total: 'false'
+        });
+        if (start !== undefined) {
+            params.set('since_us', micros(start));
+        }
+        if (end !== undefined) {
+            params.set('until_us', micros(end));
+        }
+        const pages = [];
+        let count = 0;
+        while (count < MAX_HISTORY) {
             const page = await api(`/packets?${params}`);
-            packets.push(...page.packets);
-            offset += page.count;
+            pages.push(page.packets);
+            count += page.count;
             if (page.count < PAGE_SIZE) {
                 break;
             }
+            const last = page.packets[page.count - 1];
+            params.set('until_us', String(last.timestamp_us));
+            params.set('after_id', String(last.id));
         }
 
-        return packets;
+        return pages.flat().reverse();
     }
 
     async function fetchLatest(type, end) {
@@ -266,9 +277,38 @@
         return (await api(`/packets?${params}`)).packets;
     }
 
+    /**
+     * A plot's history (Open MCT's 'minmax' strategy, `size` points): per time
+     * bucket, the packets with the lowest and highest `field`, computed by the
+     * backend. A 15-minute window of a 100 Hz IMU axis is ~1000 points
+     * instead of 90 000, and its peaks still show.
+     */
+    async function fetchMinmax(type, field, start, end, size) {
+        const params = new URLSearchParams({
+            type, since_us: micros(start), until_us: micros(end), points: String(Math.min(size, PAGE_SIZE))
+        });
+        if (field !== null) {
+            params.set('field', field);
+        }
+
+        return (await api(`/packets/minmax?${params}`)).packets;
+    }
+
     // Several objects share a message type (Orientation X/Y/Z, a plot and a
     // LAD table on the same layout...): identical concurrent requests share one fetch.
     const inflight = new Map();
+
+    /** A plot's history for one point; see fetchMinmax. */
+    function fetchPlotPackets(spec, options) {
+        const key = `${spec.message}|${spec.from}|${options.start}|${options.end}|minmax${options.size}`;
+        if (!inflight.has(key)) {
+            const request = fetchMinmax(spec.message, spec.from, options.start, options.end, options.size)
+                .finally(() => inflight.delete(key));
+            inflight.set(key, request);
+        }
+
+        return inflight.get(key);
+    }
 
     function fetchPackets(type, options) {
         const latest = options.strategy === 'latest' && options.size === 1;
@@ -280,6 +320,37 @@
         }
 
         return inflight.get(key);
+    }
+
+    /**
+     * Subscribe with Open MCT's batching (provider.supportsBatching): the
+     * datums produced since the last flush go out every BATCH_MS in one call.
+     * Plots and tables ask for the whole batch; the other views (strategy
+     * 'latest') only ever show the newest value, so only that one is kept.
+     */
+    function batched(subscribe, callback, options) {
+        const latest = options?.strategy !== 'batch';
+        let pending = [];
+        let timer = null;
+        const flush = () => {
+            timer = null;
+            const batch = pending;
+            pending = [];
+            callback(batch);
+        };
+        const unsubscribe = subscribe((datum) => {
+            if (latest) {
+                pending[0] = datum;
+            } else {
+                pending.push(datum);
+            }
+            timer ??= setTimeout(flush, BATCH_MS);
+        });
+
+        return () => {
+            clearTimeout(timer);
+            unsubscribe();
+        };
     }
 
     // --- live stream -------------------------------------------------------------
@@ -655,15 +726,25 @@
                 supportsRequest: is(POINT_TYPE),
                 async request(domainObject, options) {
                     const spec = POINTS[domainObject.identifier.key];
-                    const packets = await fetchPackets(spec.message, options);
+                    // Plots ask for 'minmax' (unless drawn without interpolation):
+                    // the full rate would be tens of thousands of points per line.
+                    const plot = options.strategy === 'minmax' && options.size > 0
+                        && options.start !== undefined && options.end !== undefined
+                        && spec.format !== 'string';
+                    const packets = await (plot ? fetchPlotPackets(spec, options) : fetchPackets(spec.message, options));
 
                     return packets.map((packet) => pointDatum(spec, packet));
                 },
                 supportsSubscribe: is(POINT_TYPE),
-                subscribe(domainObject, callback) {
+                supportsBatching: is(POINT_TYPE),
+                subscribe(domainObject, callback, options) {
                     const spec = POINTS[domainObject.identifier.key];
 
-                    return stream.subscribe(spec.message, (packet) => callback(pointDatum(spec, packet)));
+                    return batched(
+                        (emit) => stream.subscribe(spec.message, (packet) => emit(pointDatum(spec, packet))),
+                        callback,
+                        options
+                    );
                 },
                 supportsStaleness: is(POINT_TYPE),
                 isStale(domainObject) {
@@ -676,7 +757,8 @@
                 }
             });
 
-            // Whole messages, for Launch Control.
+            // Whole messages, for Launch Control. Not batched: its flight
+            // tracker and 3D view take every packet as it comes.
             openmct.telemetry.addProvider({
                 supportsRequest: is(MESSAGE_TYPE),
                 async request(domainObject, options) {
@@ -711,8 +793,13 @@
                     return flight.request(domainObject.identifier.key, options);
                 },
                 supportsSubscribe: is(flight.type),
-                subscribe(domainObject, callback) {
-                    return flight.subscribe(domainObject.identifier.key, callback);
+                supportsBatching: is(flight.type),
+                subscribe(domainObject, callback, options) {
+                    return batched(
+                        (emit) => flight.subscribe(domainObject.identifier.key, emit),
+                        callback,
+                        options
+                    );
                 },
                 supportsStaleness: is(flight.type),
                 isStale() {
