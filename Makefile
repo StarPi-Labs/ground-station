@@ -14,11 +14,11 @@ BUNDLE ?= starpi-images.tar.gz
 BUILD ?= --build
 
 .DEFAULT_GOAL := help
-.PHONY: help up sim down restart build logs ps test setup-bl hotspot lan images bundle deploy load
+.PHONY: help up sim pi down restart build logs ps test setup-bl hotspot lan images bundle deploy load
 
 help:
 	@echo "make up       build and start the stack on the rocket link (BLE)"
-	@echo "make sim      same, fed by the telemetry simulator instead"
+	@echo "make sim      same, fed by the telemetry simulator instead (SP_SIM_RATE=350 pkt/s)"
 	@echo "make down     stop and remove the containers (data in backend/data stays)"
 	@echo "make restart  restart the running containers"
 	@echo "make build    build the images only"
@@ -32,7 +32,8 @@ help:
 	@echo "make deploy   build the images for the Pi and load them over SSH (PI=starpi.local)"
 	@echo "make bundle   same images into $(BUNDLE), to carry over by hand"
 	@echo "make load     on the Pi: load $(BUNDLE)"
-	@echo "make up BUILD=--no-build   on the Pi: start from the loaded images (sim too)"
+	@echo "make pi       on the Pi: start from the loaded images, Open MCT on port 80"
+	@echo "make up BUILD=--no-build   same on the default port (sim too)"
 
 # --wait returns once the backend's healthcheck passes, so a broken start
 # fails here instead of silently in the background.
@@ -44,6 +45,11 @@ up: setup-bl
 sim:
 	SP_LINKS=sim SP_DB_PATH=/data/simulator.db $(COMPOSE) up -d $(BUILD) --wait
 	@echo "Open MCT (simulator): http://localhost:$${FRONTEND_PORT:-8040}"
+
+# On the Pi: the images come from `make deploy`/`make load` and are never built
+# there, and the dashboard answers on the default HTTP port (http://starpi.local).
+pi:
+	$(MAKE) up BUILD=--no-build FRONTEND_PORT=80
 
 down:
 	$(COMPOSE) down
