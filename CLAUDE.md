@@ -52,4 +52,4 @@ Apache :8040 (basic auth) serves openmct/ and proxies /api, /ws, /docs to backen
 
 ## Host setup
 
-`scripts/setup-bluetooth.sh` (run by `make up`) powers the host BlueZ controller; the backend container talks to it over the host D-Bus socket. `scripts/setup-hotspot.sh` (`make hotspot PASSWORD=...`) configures a NetworkManager Wi-Fi hotspot on the Pi.
+`scripts/setup-bluetooth.sh` (run by `make up`) powers the host BlueZ controller; the backend container talks to it over the host D-Bus socket. `scripts/setup-hotspot.sh` (`make hotspot PASSWORD=...`) configures a NetworkManager Wi-Fi hotspot on the Pi. `scripts/setup-lan.sh` (`make lan`) makes the Pi serve DHCP on its Ethernet port (10.43.0.1) for a laptop on a direct cable.

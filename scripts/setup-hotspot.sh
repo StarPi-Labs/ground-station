@@ -75,9 +75,12 @@ nmcli connection add \
     >/dev/null
 
 # NetworkManager runs dnsmasq for shared connections and loads every file in
-# dnsmasq-shared.d, so this record goes live with the hotspot.
+# dnsmasq-shared.d, so this record goes live with the hotspot. It names the
+# interface rather than an address: the wired network (setup-lan.sh) reads the
+# same files, and localise-queries answers each network with the Pi's address
+# on it.
 mkdir -p "$(dirname "$DNSMASQ_CONF")"
-echo "address=/$DOMAIN/${ADDRESS%/*}" > "$DNSMASQ_CONF"
+printf 'interface-name=%s,%s\nlocalise-queries\n' "$DOMAIN" "$IFACE" > "$DNSMASQ_CONF"
 
 echo "Hotspot ready, it starts on the next boot (or now: nmcli connection up $CON)."
 echo "Dashboard: http://$DOMAIN:8040 (or http://${ADDRESS%/*}:8040)"

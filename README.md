@@ -102,6 +102,20 @@ networks stay as a fallback if the hotspot cannot start. `sudo nmcli connection 
 starpi-hotspot` switches back to them until the next boot, and `sudo nmcli
 connection delete starpi-hotspot` removes the hotspot for good.
 
+For a laptop on a direct Ethernet cable:
+
+```sh
+make lan            # IFACE=eth0 by default
+```
+
+The Pi's Ethernet port then serves its own network (`10.43.0.1/24`, with
+DHCP), right away and on every boot: the laptop needs no settings and reaches
+the dashboard at <http://starpi.local:8040> (or <http://10.43.0.1:8040>) and
+SSH at `starpi.local`. As on the hotspot, the Pi's DNS server answers that name,
+each network with the Pi's own address on it. The port hands out addresses, so
+don't plug it into a router while this is on; `sudo nmcli connection delete
+starpi-lan` undoes it.
+
 ### Frontend
 
 `openmct/` holds the Open MCT site. Open MCT itself comes from npm, pinned in
