@@ -50,7 +50,11 @@ No rocket at hand? `make run-sim` feeds the same pipeline from a built-in
 telemetry simulator, dashboard included. It flies a complete flight every 250 s
 (20 s on the pad, 3.3 s burn at 8 g, apogee at ~3000 m, drogue descent at
 25 m/s, main parachute at 6 m/s below 450 m, landing at T+201 s), so every
-flight phase shows up in the frontend.
+flight phase shows up in the frontend. It sends 350 pkt/s by default, above
+the real rocket's ~300, for headroom; `SP_SIM_RATE` sets another rate (`make
+run-sim SP_SIM_RATE=500`). The rate is shared in a fixed mix: the IMU vectors
+at 25% each, altitude and pressure at 10%, temperature and GPS at 2.5% (at
+400 pkt/s: 100, 40 and 10 Hz; `RATES_HZ` in `links/sim.py`).
 
 To run without Docker:
 
@@ -72,6 +76,7 @@ All settings come from environment variables.
 | `SP_BLE_ADDRESS` | — | Connect to this MAC directly, skipping the name scan |
 | `SP_BLE_SCAN_TIMEOUT` | `10` | Scan timeout, seconds |
 | `SP_BLE_RECONNECT_DELAY` | `5` | Delay between reconnect attempts, seconds |
+| `SP_SIM_RATE` | `350` | Packets per second sent by the `sim` link |
 | `SP_MAX_PAGE_SIZE` | `1000` | Upper bound on `limit` |
 | `SP_LIVE_BUFFER` | `200` | Packets kept for websocket backfill |
 | `SP_SERVE_WEB` | `false` | Serve the bundled dashboard at `/` (else `/` redirects to `/docs`) |
@@ -94,7 +99,10 @@ All settings come from environment variables.
 `payload_type`, `link`. Filters accept enum names and are OR-ed together, so
 `?src=S_IMU&src=S_BARO` (or `?src=S_IMU,S_BARO`) returns both.
 `with_total=false` skips counting the matches (`total` is then `null`), which
-halves the cost of paging through long histories.
+halves the cost of paging through long histories. To page, prefer `after_id`
+to `offset`: pass the previous page's last packet as `after_id` with its
+`timestamp_us` as `since_us` (`order=asc`) or `until_us` (`order=desc`). Each
+page then costs the same, where `offset` gets slower with every page.
 
 `link` selects the transport a packet arrived on (`ble`, `sim`, … — the names
 in `SP_LINKS`), which is how a flight over one radio is read back without the
