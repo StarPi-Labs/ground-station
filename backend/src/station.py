@@ -3,20 +3,34 @@
 Ingest path for every frame, regardless of transport::
 
     Link -> Station.on_frame -> protocol.decode -> SQLite -> Hub -> websockets
+
+Frames are decoded and broadcast as they arrive, then stored in batches: a
+single writer task saves everything that queued up since its previous batch,
+at most every WRITE_INTERVAL_S. The live stream never waits for the disk: on
+the Pi's SD card a commit or WAL checkpoint can take half a second. Packet ids
+are handed out here, continuing the table's own sequence, so a packet has its
+id before it is stored.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from config import Config, config as default_config
-from db import Database
+from db import Database, now_us
 from hub import Hub
 from links import Link, LinkError, UnknownCommand, UnknownLink, create_link
 from protocol import LogMessage, ProtocolError
 
 log = logging.getLogger(__name__)
+
+#: Minimum time between two packet batches, in seconds. Every commit rewrites
+#: whole pages of the table and its indexes, so committing as packets came
+#: in (~50 times a second) wrote ~3 MB/s to the SD card for ~45 kB/s of data.
+#: Only storage waits for it, not the live stream.
+WRITE_INTERVAL_S = 0.5
 
 
 class Station:
@@ -31,12 +45,22 @@ class Station:
         #: from decode errors: a storage outage is a different fault to a bad
         #: frame, and /api/health reports them separately.
         self.store_errors = 0
+        # Published packets waiting for the writer, and their raw frames.
+        self._pending: list[dict[str, Any]] = []
+        self._pending_raw: list[bytes] = []
+        self._next_id = 1
+        self._pending_ready = asyncio.Event()
+        self._writer: asyncio.Task[None] | None = None
+        self._stopping = False
 
     # --- lifecycle ---------------------------------------------------------
 
     async def start(self) -> None:
         await self.db.connect()
         log.info("storage ready at %s", self.config.db_path)
+        self._next_id = await self.db.next_packet_id()
+        self._stopping = False
+        self._writer = asyncio.create_task(self._write_loop(), name="packet-writer")
 
         for name in self.config.links:
             try:
@@ -60,12 +84,19 @@ class Station:
             except Exception:  # noqa: BLE001
                 log.exception("link %r failed to stop cleanly", link.name)
         self.links.clear()
+        if self._writer is not None:
+            # Not cancelled: a batch cut off mid-write would be lost. The
+            # writer drains the queue and returns once it sees the flag.
+            self._stopping = True
+            self._pending_ready.set()
+            await self._writer
+            self._writer = None
         await self.db.close()
 
     # --- ingest ------------------------------------------------------------
 
     async def on_frame(self, link_name: str, frame: bytes) -> None:
-        """Decode, persist and broadcast one raw frame."""
+        """Decode and broadcast one raw frame, and queue it for storage."""
         try:
             message = LogMessage.from_bytes(frame)
         except ProtocolError as exc:
@@ -76,15 +107,44 @@ class Station:
             )
             return
 
-        try:
-            record = await self.db.insert_packet(message, link_name, frame)
-        except Exception:  # noqa: BLE001 - never lose the live stream over a write error
-            self.store_errors += 1
-            log.exception("failed to persist packet from %s", link_name)
-            record = message.to_dict()
-            record.update({"id": None, "link": link_name, "received_at_us": None})
-
+        record = message.to_dict()
+        record.update({"id": self._next_id, "link": link_name, "received_at_us": now_us()})
+        self._next_id += 1
         self.hub.publish({"event": "packet", "data": record})
+        self._pending.append(record)
+        self._pending_raw.append(frame)
+        self._pending_ready.set()
+
+    async def _write_loop(self) -> None:
+        loop = asyncio.get_running_loop()
+        while not self._stopping:
+            await self._pending_ready.wait()
+            started = loop.time()
+            self._pending_ready.clear()
+            await self._flush()
+            # Let the next batch collect for the rest of the interval. Not
+            # after stop(): the final flush below takes whatever is left.
+            if not self._stopping:
+                await asyncio.sleep(max(0.0, started + WRITE_INTERVAL_S - loop.time()))
+        await self._flush()  # anything that queued during the last batch
+
+    async def _flush(self) -> None:
+        """Store every queued packet, in arrival order."""
+        batch, self._pending = self._pending, []
+        raws, self._pending_raw = self._pending_raw, []
+        if not batch:
+            return
+        try:
+            await self.db.insert_packets(batch, raws)
+        except Exception:  # noqa: BLE001 - the live stream already has them
+            self.store_errors += len(batch)
+            log.exception("failed to persist %d packets", len(batch))
+            # If something else wrote to the table, our ids now collide with
+            # its rows: move past them, or every later batch fails too.
+            try:
+                self._next_id = max(self._next_id, await self.db.next_packet_id())
+            except Exception:  # noqa: BLE001 - the next failure retries
+                pass
 
     # --- commands ----------------------------------------------------------
 
