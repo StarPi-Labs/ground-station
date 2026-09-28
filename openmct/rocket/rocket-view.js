@@ -15,6 +15,13 @@
     const TYPE = 'starpi.rocket';
     const THREE_URL = '/node_modules/three/build/three.module.js';
     const STALE_CHECK_MS = 500;
+    // Frames are drawn only while something moves (a Pi has little GPU to
+    // spare): easing stops once within this of its target (rad, model units).
+    const SETTLED = 1e-3;
+    // Attitude changes smaller than this (rad, 1°) are sensor noise at this
+    // scale: they would keep the view redrawing on a rocket sitting still.
+    // The readouts still show the exact angles.
+    const ATTITUDE_DEADBAND = Math.PI / 180;
 
     // How the IMU's orientation maps onto the model: the rocket's long axis is
     // the IMU's Z (the accelerometer reads thrust on Z), X and Y are the tilts,
@@ -271,22 +278,34 @@
             return { group, canopy, cord, confluence, inflation: 0 };
         }
 
+        /** Returns true when the model has to turn. */
         setAttitude(x, y, z) {
             if (![x, y, z].every(Number.isFinite)) {
-                return;
+                return false;
             }
             const rad = Math.PI / 180;
-            const euler = new this.THREE.Euler(x * rad, y * rad, z * rad, EULER_ORDER);
-            this.target.setFromEuler(euler);
+            const next = new this.THREE.Quaternion().setFromEuler(
+                new this.THREE.Euler(x * rad, y * rad, z * rad, EULER_ORDER)
+            );
+            if (this.state.hasAttitude && next.angleTo(this.target) < ATTITUDE_DEADBAND) {
+                return false;
+            }
+            this.target.copy(next);
             if (!this.state.hasAttitude) {
                 this.attitude.quaternion.copy(this.target);
                 this.state.hasAttitude = true;
             }
+
+            return true;
         }
 
+        /** Returns true when the flame or parachutes change. */
         setFlight(phase, recovery) {
+            const changed = phase !== this.state.phase || recovery !== this.state.recovery;
             this.state.phase = phase;
             this.state.recovery = recovery;
+
+            return changed;
         }
 
         resize() {
@@ -305,17 +324,23 @@
             return true;
         }
 
+        /** Draw one frame; returns true while something is still moving and needs the next one. */
         frame() {
             if (!this.resize()) {
-                return;
+                return false;
             }
             this.timer.update();
-            const dt = Math.min(this.timer.getDelta(), 0.1);
+            // Coming back from idle, the time since the last frame is no step to ease by.
+            const dt = this.animating ? Math.min(this.timer.getDelta(), 0.1) : 1 / 60;
             const t = this.timer.getElapsed();
             const ease = (rate) => 1 - Math.exp(-dt * rate);
             const { phase, recovery } = this.state;
 
             this.attitude.quaternion.slerp(this.target, ease(12));
+            const turning = this.attitude.quaternion.angleTo(this.target) > SETTLED;
+            if (!turning) {
+                this.attitude.quaternion.copy(this.target);
+            }
 
             // Flame: only while the motor burns, flickering.
             this.flame.visible = phase === 'BOOST';
@@ -364,6 +389,11 @@
             const size = Math.max(height, width / this.camera.aspect);
             this.view.centre += (centre - this.view.centre) * ease(3);
             this.view.size += (size - this.view.size) * ease(3);
+            const reframing = Math.abs(centre - this.view.centre) > SETTLED || Math.abs(size - this.view.size) > SETTLED;
+            if (!reframing) {
+                this.view.centre = centre;
+                this.view.size = size;
+            }
             const distance = (this.view.size * 0.62) / Math.tan(fov / 2);
             const { azimuth, elevation } = this.orbit;
             this.camera.position.set(
@@ -374,6 +404,11 @@
             this.camera.lookAt(0, this.view.centre, 0);
 
             this.renderer.render(this.scene, this.camera);
+
+            // The flame flickers and the canopies sway for as long as they show.
+            this.animating = turning || reframing || this.flame.visible || (airborne && recovery !== 'NONE');
+
+            return this.animating;
         }
 
         dispose() {
@@ -423,12 +458,10 @@
                     return;
                 }
                 this.bindOrbit(this.refs.stage);
+                // Layouts size the view after it is shown, and resize it later.
+                this.resize = new ResizeObserver(() => this.requestFrame());
+                this.resize.observe(this.refs.stage);
                 this.apply();
-                const loop = () => {
-                    this.scene.frame();
-                    this.frame = requestAnimationFrame(loop);
-                };
-                loop();
             }, (error) => {
                 this.message('3D view unavailable: could not load three.js.');
                 console.error('StarPi: could not load three.js', error);
@@ -442,12 +475,26 @@
             this.destroyed = true;
             this.generation += 1;
             cancelAnimationFrame(this.frame);
+            this.resize?.disconnect();
             clearInterval(this.staleTimer);
             this.unsubscribers.forEach((unsubscribe) => unsubscribe());
             this.openmct.time.off('boundsChanged', this.onBounds);
             this.openmct.time.off('modeChanged', this.load);
             this.openmct.time.off('clockChanged', this.load);
             this.scene?.dispose();
+        }
+
+        /** Draw on the next animation frame, and keep drawing while the scene animates. */
+        requestFrame() {
+            if (!this.scene || this.frame || this.destroyed) {
+                return;
+            }
+            this.frame = requestAnimationFrame(() => {
+                this.frame = null;
+                if (this.scene.frame()) {
+                    this.requestFrame();
+                }
+            });
         }
 
         message(text) {
@@ -525,10 +572,11 @@
             const phase = this.latest.phase ? PHASES[this.latest.phase.value] : null;
             const recovery = (this.latest.recovery ? RECOVERY[this.latest.recovery.value] : null) ?? 'NONE';
 
-            if (orientation) {
-                this.scene?.setAttitude(orientation.x, orientation.y, orientation.z);
+            const turned = orientation ? this.scene?.setAttitude(orientation.x, orientation.y, orientation.z) : false;
+            const staged = this.scene?.setFlight(phase, recovery);
+            if (turned || staged) {
+                this.requestFrame();
             }
-            this.scene?.setFlight(phase, recovery);
 
             for (const axis of ['x', 'y', 'z']) {
                 this.refs[axis].textContent = `${fixed(orientation?.[axis], 1)}°`;
@@ -566,6 +614,7 @@
                 const orbit = this.scene.orbit;
                 orbit.azimuth = drag.azimuth - (event.clientX - drag.x) * 0.01;
                 orbit.elevation = Math.max(-0.2, Math.min(1.4, drag.elevation + (event.clientY - drag.y) * 0.01));
+                this.requestFrame();
             });
             const release = () => {
                 drag = null;
@@ -574,6 +623,7 @@
             stage.addEventListener('pointercancel', release);
             stage.addEventListener('dblclick', () => {
                 Object.assign(this.scene.orbit, { azimuth: 0.6, elevation: 0.18 });
+                this.requestFrame();
             });
         }
     }
