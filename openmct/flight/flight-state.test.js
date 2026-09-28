@@ -132,6 +132,22 @@ test('samples older than the last one are ignored', () => {
     assert.equal(tracker.snapshot().altitude, 100);
 });
 
+test('the cached pad median follows every sample, through a landing and relaunch', () => {
+    const { median } = require('./flight-state.js');
+    const tracker = new FlightTracker();
+    const random = rng(7);
+    for (let i = 0; i <= 2 * 90 * 5; i++) {
+        const t = (i % (90 * 5)) / 5; // two flights back to back
+        const s = ideal(t);
+        const ms = i * 200;
+        tracker.update({ t: ms, kind: 'accel', x: 0, y: 0, z: s.a });
+        tracker.update({ t: ms, kind: 'alt', altitude: PAD_ALT + s.h + 2 * random(), speed: s.v });
+        const expected = tracker.frozenGround ?? (tracker.groundSamples.length ? median(tracker.groundSamples) : null);
+        assert.equal(tracker.ground, expected, `at sample ${i}, phase ${tracker.phase}`);
+    }
+    assert.equal(tracker.events.filter((e) => e.phase === 'BOOST').length, 1, 'second flight after landing');
+});
+
 test('pinned ground level overrides the pad median', () => {
     const tracker = new FlightTracker();
     tracker.update({ t: 0, kind: 'alt', altitude: 130, speed: 0 });

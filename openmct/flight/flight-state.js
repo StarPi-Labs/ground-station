@@ -89,7 +89,7 @@
         reset() {
             this.phase = 'PAD';
             this.lastTime = -Infinity;
-            this.groundSamples = [];
+            this.clearGroundSamples();
             this.padFixes = [];
             this.padPosition = null;
             this.frozenGround = null;
@@ -117,6 +117,23 @@
             this.slowSince = null;
         }
 
+        clearGroundSamples() {
+            this.groundSamples = [];
+            this.groundMedian = undefined;
+        }
+
+        /**
+         * Median of the pad altitude samples, or null. Cached until the next
+         * sample: `ground` and `agl` are read several times per sample.
+         */
+        padMedian() {
+            if (this.groundMedian === undefined) {
+                this.groundMedian = this.groundSamples.length ? median(this.groundSamples) : null;
+            }
+
+            return this.groundMedian;
+        }
+
         /** Pin the ground level (m); `null` goes back to the pad median. */
         setGround(altitude) {
             this.groundOverride = altitude;
@@ -130,7 +147,7 @@
                 return this.frozenGround;
             }
 
-            return this.groundSamples.length ? median(this.groundSamples) : null;
+            return this.padMedian();
         }
 
         get agl() {
@@ -174,6 +191,7 @@
                 if (this.groundSamples.length > this.config.groundWindow) {
                     this.groundSamples.shift();
                 }
+                this.groundMedian = undefined;
             }
 
             if (this.onGround() && this.speed > this.config.launchSpeed) {
@@ -247,7 +265,7 @@
                     this.padPosition = { lat: this.fix.lat, lon: this.fix.lon };
                 }
             }
-            this.frozenGround = this.groundSamples.length ? median(this.groundSamples) : this.altitude;
+            this.frozenGround = this.padMedian() ?? this.altitude;
             this.launchTime = t;
             this.highAccelSince = null;
             this.enter('BOOST', t);
@@ -291,7 +309,7 @@
                         this.enter('LANDED', this.landedSince);
                         // Keep the pad's ground level on screen; samples from
                         // here on set the ground for the next launch.
-                        this.groundSamples = [];
+                        this.clearGroundSamples();
                     }
                 } else {
                     this.landedSince = null;

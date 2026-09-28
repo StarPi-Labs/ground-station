@@ -170,6 +170,11 @@
             this.openmct = openmct;
             this.type = TYPE;
             this.points = flightPoints();
+            // Point keys by the sample kind that updates them: looked up for every sample.
+            this.pointsOn = { alt: [], accel: [], gps: [] };
+            for (const [key, point] of Object.entries(this.points)) {
+                point.on.forEach((kind) => this.pointsOn[kind].push(key));
+            }
             this.listeners = new Map(); // point key -> Set<callback>
             this.settingsListeners = new Set();
             this.settings = {};
@@ -268,12 +273,12 @@
             if (!this.tracker.update(s)) {
                 return;
             }
-            for (const [key, callbacks] of this.listeners) {
-                const point = this.points[key];
-                if (!callbacks.size || !point.on.includes(s.kind)) {
+            for (const key of this.pointsOn[s.kind]) {
+                const callbacks = this.listeners.get(key);
+                if (!callbacks?.size) {
                     continue;
                 }
-                const datum = datumFor(point, this.tracker, s.t);
+                const datum = datumFor(this.points[key], this.tracker, s.t);
                 if (datum) {
                     callbacks.forEach((callback) => callback(datum));
                 }
@@ -324,12 +329,10 @@
                         if (!tracker.update(s) || s.t < start) {
                             continue;
                         }
-                        for (const [k, point] of Object.entries(this.points)) {
-                            if (point.on.includes(s.kind)) {
-                                const datum = datumFor(point, tracker, s.t);
-                                if (datum) {
-                                    rows[k].push(datum);
-                                }
+                        for (const k of this.pointsOn[s.kind]) {
+                            const datum = datumFor(this.points[k], tracker, s.t);
+                            if (datum) {
+                                rows[k].push(datum);
                             }
                         }
                     }
