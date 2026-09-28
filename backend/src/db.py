@@ -306,17 +306,20 @@ def _packet_filters(
 ) -> tuple[str, list[Any]]:
     """Build the shared WHERE clause.
 
-    Enum columns hold bit flags, so a mask match (``col & mask``) lets a caller
-    select several sources or types in one request. ``link`` is a plain name
-    instead, so several links are matched with an ``IN`` set.
+    Enum columns hold bit flags, so a mask lets a caller select several
+    sources or types in one request. Each stored value is a single flag, so the
+    mask is expanded into an ``IN`` set of its bits: unlike ``col & mask`` that
+    can use the per-column indexes, which matters once history grows past a
+    few thousand rows. ``link`` is a plain name, matched with an ``IN`` set too.
     """
     clauses: list[str] = []
     params: list[Any] = []
 
     for column, mask in (("src", src_mask), ("type", type_mask), ("payload_type", payload_mask)):
         if mask:
-            clauses.append(f"({column} & ?) != 0")
-            params.append(mask)
+            flags = _flags(mask)
+            clauses.append(f"{column} IN ({', '.join('?' * len(flags))})")
+            params.extend(flags)
 
     if links:
         clauses.append(f"link IN ({', '.join('?' * len(links))})")
@@ -331,6 +334,11 @@ def _packet_filters(
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     return where, params
+
+
+def _flags(mask: int) -> list[int]:
+    """The single-bit flags set in ``mask``."""
+    return [1 << bit for bit in range(mask.bit_length()) if mask >> bit & 1]
 
 
 def _name(enum_cls: type, value: int) -> str:

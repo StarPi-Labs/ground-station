@@ -43,7 +43,7 @@ class CommandRequest(BaseModel):
 
 
 class PacketPage(BaseModel):
-    total: int
+    total: int | None
     count: int
     limit: int
     offset: int
@@ -126,6 +126,12 @@ def create_app(station: Station | None = None) -> FastAPI:
         since_us: int | None = Query(None, description="Only packets at/after this µs timestamp"),
         until_us: int | None = Query(None, description="Only packets at/before this µs timestamp"),
         order: Literal["asc", "desc"] = Query("desc"),
+        with_total: bool = Query(
+            True,
+            description="Count every matching packet into `total`. The count costs as much as"
+            " the page itself, so a client paging through history can turn it off and"
+            " stop at the first short page instead; `total` is then null.",
+        ),
     ) -> PacketPage:
         src_mask = _mask(src, resolve_source)
         type_mask = _mask(type, resolve_message_type)
@@ -140,7 +146,7 @@ def create_app(station: Station | None = None) -> FastAPI:
             "until_us": until_us,
         }
         packets = await st.db.query_packets(limit=limit, offset=offset, order=order, **filters)
-        total = await st.db.count_packets(**filters)
+        total = await st.db.count_packets(**filters) if with_total else None
         return PacketPage(
             total=total, count=len(packets), limit=limit, offset=offset, packets=packets
         )

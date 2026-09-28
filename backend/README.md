@@ -93,6 +93,8 @@ All settings come from environment variables.
 `since_us`, `until_us`, and the repeatable filters `src`, `type`,
 `payload_type`, `link`. Filters accept enum names and are OR-ed together, so
 `?src=S_IMU&src=S_BARO` (or `?src=S_IMU,S_BARO`) returns both.
+`with_total=false` skips counting the matches (`total` is then `null`), which
+halves the cost of paging through long histories.
 
 `link` selects the transport a packet arrived on (`ble`, `sim`, … — the names
 in `SP_LINKS`), which is how a flight over one radio is read back without the

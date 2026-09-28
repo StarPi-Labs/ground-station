@@ -235,7 +235,11 @@
         const packets = [];
         let offset = 0;
         while (offset < MAX_HISTORY) {
-            const params = new URLSearchParams({ type, order: 'asc', limit: String(PAGE_SIZE), offset: String(offset) });
+            // No total: counting every page doubled the backend's work, and a
+            // short page already marks the end.
+            const params = new URLSearchParams({
+                type, order: 'asc', limit: String(PAGE_SIZE), offset: String(offset), with_total: 'false'
+            });
             if (start !== undefined) {
                 params.set('since_us', micros(start));
             }
@@ -245,7 +249,7 @@
             const page = await api(`/packets?${params}`);
             packets.push(...page.packets);
             offset += page.count;
-            if (page.count < PAGE_SIZE || offset >= page.total) {
+            if (page.count < PAGE_SIZE) {
                 break;
             }
         }
