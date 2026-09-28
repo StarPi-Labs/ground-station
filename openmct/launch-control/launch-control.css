@@ -469,10 +469,17 @@
 /* --- log -------------------------------------------------------------------------------- */
 
 .lc-log__list {
-    max-height: 16rem;
+    /* A fixed, contained box: sized by its content, the log made every
+       readout update re-measure all its lines (~5 ms per render). */
+    height: 16rem;
+    contain: strict;
     overflow-y: auto;
     font-family: var(--lc-mono);
     font-size: 12.5px;
+}
+
+.lc-log__list:empty {
+    display: none;
 }
 
 .lc-log__list li {
