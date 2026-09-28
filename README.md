@@ -67,7 +67,7 @@ graph LR
 the Pi is offline, build on a computer that is online and ship the images:
 
 ```sh
-make deploy PI=pi@starpi.local   # build for the Pi, load the images over SSH
+make deploy PI=starpi@starpi.local   # build for the Pi, load the images over SSH
 ```
 
 The build runs the Pi's programs under QEMU, which it sets up and removes by

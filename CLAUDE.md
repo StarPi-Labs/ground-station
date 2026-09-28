@@ -16,7 +16,7 @@ Top-level `Makefile` wraps `docker compose` (compose file is the source of truth
 - `make sim` — same stack fed by the built-in telemetry simulator (`SP_LINKS=sim`, separate `simulator.db`). Use this for any work without a rocket.
 - `make down`, `make logs [S=backend]`, `make ps`, `make build`
 - `make test` — frontend flight-estimation tests: `node --test openmct/flight/flight-state.test.js`. Filter a single test with `node --test --test-name-pattern='<regex>' openmct/flight/flight-state.test.js`.
-- `make deploy PI=pi@starpi.local` / `make bundle` / `make load` — cross-build arm64 images under QEMU for an offline Pi; then `make up BUILD=--no-build` on the Pi.
+- `make deploy PI=starpi@starpi.local` / `make bundle` / `make load` — cross-build arm64 images under QEMU for an offline Pi; then `make up BUILD=--no-build` on the Pi.
 
 Backend alone (`backend/Makefile`): `make build`, `make run`, `make run-sim` (no BLE needed, serves bundled web dashboard), `make dev` (runs `python src/main.py` on the host; needs `pip install -r requirements.txt`). API reference at http://localhost:8000/docs.
 
