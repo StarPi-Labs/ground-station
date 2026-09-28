@@ -8,6 +8,68 @@
         return getComputedStyle(element).getPropertyValue(name).trim();
     }
 
+    /** Index of the first point at or after t (after t when `strict`), in a series sorted by t. */
+    function firstAt(series, t, strict = false) {
+        let lo = 0;
+        let hi = series.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (series[mid].t < t || (strict && series[mid].t === t)) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+
+        return lo;
+    }
+
+    /**
+     * The points of series[from, to) worth drawing on `columns` pixel columns
+     * over [start, end]: per column the first, lowest, highest and last point,
+     * in time order. The line looks the same, peaks included, whatever the
+     * number of points. Also returns the value range.
+     */
+    function decimate(series, from, to, start, span, columns, offset) {
+        const points = [];
+        let min = Infinity;
+        let max = -Infinity;
+        let column = -1;
+        let first;
+        let low;
+        let high;
+        let last;
+        const flush = () => {
+            if (column < 0) {
+                return;
+            }
+            // Distinct points only, ordered by time.
+            const bucket = [first, low, high, last]
+                .filter((p, i, all) => all.indexOf(p) === i)
+                .sort((a, b) => a.t - b.t);
+            for (const p of bucket) {
+                points.push({ t: p.t, v: p.v + offset });
+            }
+        };
+        for (let i = from; i < to; i++) {
+            const p = series[i];
+            if (p.v < min) min = p.v;
+            if (p.v > max) max = p.v;
+            const c = Math.floor(((p.t - start) / span) * columns);
+            if (c !== column) {
+                flush();
+                column = c;
+                first = low = high = p;
+            }
+            if (p.v < low.v) low = p;
+            if (p.v > high.v) high = p;
+            last = p;
+        }
+        flush();
+
+        return { points, min: min + offset, max: max + offset };
+    }
+
     /** Size a canvas to its CSS box at device resolution; returns the 2D context. */
     function prepare(canvas) {
         const ratio = window.devicePixelRatio || 1;
@@ -45,6 +107,7 @@
      *
      * @param {object} spec
      *   series: [{ t, v }] sorted by t
+     *   offset: added to every value (altitude above ground from MSL)
      *   start, end: time window (ms)
      *   events: [{ t, phase }] drawn as labelled vertical rules
      *   zero: draw the y = 0 line (speed)
@@ -67,13 +130,11 @@
         const plotH = Math.max(1, height - top - bottom);
         const span = Math.max(1, spec.end - spec.start);
 
-        const visible = spec.series.filter((p) => p.t >= spec.start && p.t <= spec.end);
-        let min = Infinity;
-        let max = -Infinity;
-        for (const p of visible) {
-            if (p.v < min) min = p.v;
-            if (p.v > max) max = p.v;
-        }
+        const from = firstAt(spec.series, spec.start);
+        const to = firstAt(spec.series, spec.end, true);
+        const decimated = decimate(spec.series, from, to, spec.start, span, plotW, spec.offset || 0);
+        const visible = decimated.points;
+        let { min, max } = decimated;
         if (!Number.isFinite(min)) {
             min = 0;
             max = 1;

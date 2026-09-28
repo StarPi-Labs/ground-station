@@ -655,11 +655,7 @@
                 refs.chartsEmpty.textContent = 'No telemetry in this time window.';
             }
 
-            window.StarPiCharts.drawStrip(refs.chartAlt, {
-                ...window_,
-                series: series.alt.map((p) => ({ t: p.t, v: p.v - ground })),
-                floor: 10
-            });
+            window.StarPiCharts.drawStrip(refs.chartAlt, { ...window_, series: series.alt, offset: -ground, floor: 10 });
             window.StarPiCharts.drawStrip(refs.chartSpeed, { ...window_, series: series.speed, zero: true, floor: 4 });
             window.StarPiCharts.drawStrip(refs.chartAccel, { ...window_, series: series.accel, floor: 1 });
         }
