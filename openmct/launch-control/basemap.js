@@ -145,6 +145,10 @@
                 center: current.center,
                 zoom: 14
             });
+            // The credits stay required but start folded to the (i) button.
+            const fold = () => this.container.querySelector('.maplibregl-ctrl-attrib')?.removeAttribute('open');
+            fold();
+            this.map.once('load', fold);
             this.update();
         }
 
