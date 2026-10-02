@@ -129,12 +129,15 @@
 
     const STORAGE_STATES = { corrupt: 0, checking: 1, ok: 2 };
 
-    // Folder tree. The flight folder's children come from flight-service.js.
+    // Folder tree. The root holds only dashboards; every quantity, measured
+    // or estimated, lives under Telemetry and reusable views under Widgets.
+    // Moving an object between folders keeps its identifier, so layouts that
+    // embed it still resolve. The flight folder's children come from
+    // flight-service.js.
     const FOLDERS = {
-        root: {
-            name: 'StarPi',
-            children: ['launch-control', 'rocket', 'commands', 'flight', 'baro', 'imu', 'gps', 'station', 'sys.log']
-        },
+        root: { name: 'StarPi', children: ['launch-control', 'telemetry', 'widgets'] },
+        telemetry: { name: 'Telemetry', children: ['baro', 'imu', 'gps', 'flight', 'station', 'sys.log'] },
+        widgets: { name: 'Widgets', children: ['rocket', 'commands'] },
         baro: { name: 'Barometer', children: ['baro.altitude', 'baro.speed', 'baro.pressure', 'baro.temperature'] },
         imu: { name: 'IMU', children: ['imu.accel', 'imu.gyro', 'imu.orientation'] },
         'imu.accel': { name: 'Acceleration', plot: true, children: ['imu.accel.x', 'imu.accel.y', 'imu.accel.z'] },

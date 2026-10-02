@@ -123,11 +123,14 @@ starpi-lan` undoes it.
 `openmct/` holds the Open MCT site. Open MCT itself comes from npm, pinned in
 `openmct/package.json`, and is built into the `apache` image.
 
-The **StarPi** tree follows Open MCT's conventions: one telemetry object per
-measured quantity, grouped by subsystem, each with its unit and display
-precision, so any standard view can combine them.
+The **StarPi** folder is the ground station's own: its top level holds only
+the dashboards (today **Launch Control**), **Telemetry** every quantity,
+measured or estimated, and **Widgets** the custom views that dashboards embed
+(Rocket Attitude, Commands). Telemetry follows Open MCT's conventions: one
+object per measured quantity, grouped by subsystem, each with its unit and
+display precision, so any standard view can combine them.
 
-| Folder | Contents |
+| StarPi › Telemetry › | Contents |
 | --- | --- |
 | Flight (estimated) | Flight phase, parachutes out, mission time, altitude above ground, apogee, max speed/acceleration, distance and bearing from the pad, ground track |
 | Barometer | Altitude (MSL), vertical speed, pressure, temperature |
@@ -149,22 +152,21 @@ are never dropped by views that ignore data past the window's end.
 
 There are two, to compare:
 
-* **My Items › StarPi Flight Dashboard › Flight Dashboard** (the page Open
-  MCT opens on) is built only from standard Open MCT objects: a Display Layout
-  with Condition Widgets for the flight phase and alarms, a Stacked Plot, a
-  Scatter Plot of the ground track, Overlay Plots, a Gauge, LAD tables and a
-  Telemetry Table. Everything can be edited from the UI (the pencil button):
+* **My Items › StarPi Flight Dashboard › Flight Dashboard** is built only
+  from standard Open MCT objects: a Display Layout with Condition Widgets for
+  the flight phase and alarms, a Stacked Plot, a Scatter Plot of the ground
+  track, Overlay Plots, a Gauge, LAD tables and a Telemetry Table. Everything can be edited from the UI (the pencil button):
   move and resize items, restyle them, change the alarm thresholds in *Alarm
   conditions*. It lives in the browser's local storage: delete the *StarPi
   Flight Dashboard* folder and reload to get the original back.
-* **StarPi › Launch Control** is the custom view: the same data in a
-  purpose-built layout, fixed but denser.
+* **StarPi › Launch Control** (the page Open MCT opens on) is the custom
+  view: the same data in a purpose-built layout, fixed but denser.
 
-**StarPi › Rocket Attitude** (also on the standard dashboard and in Launch
-Control) is a 3D model of
-the rocket turned to its reported orientation, with cues for the estimated
-flight state: an exhaust flame during the burn, a small drogue from apogee and
-the main parachute once the descent slows. Drag to orbit, double-click to
+**StarPi › Widgets › Rocket Attitude** (also on the standard dashboard and in
+Launch Control) is a 3D model of the rocket turned to its reported
+orientation, with cues for the estimated flight state: an exhaust flame during
+the burn, a small drogue from apogee and the main parachute once the descent
+slows. Drag to orbit, double-click to
 reset. It takes the IMU's Z as the rocket's long axis and applies the X, Y, Z
 angles in that order (`EULER_ORDER` in `openmct/rocket/rocket-view.js`); one
 fin is blue so the roll shows. three.js comes from npm like Open MCT.

@@ -51,8 +51,10 @@ const openmct = window.openmct;
     openmct.install(window.StarPiLaunchControl());
     openmct.install(window.StarPiRocketView());
 
-    // A link to a specific object wins; otherwise open the flight dashboard.
+    // A link to a specific object wins; otherwise open Launch Control, the
+    // main dashboard.
     const linked = Boolean(window.location.hash);
+    const HOME = '#/browse/starpi:root/starpi:launch-control';
 
     openmct.on('start', async function () {
         try {
@@ -62,7 +64,7 @@ const openmct = window.openmct;
         }
         window.StarPi.flight.watchSettings();
         if (!linked) {
-            window.location.hash = window.StarPiDashboard.PATH;
+            window.location.hash = HOME;
         }
     });
 
