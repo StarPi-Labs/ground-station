@@ -4,9 +4,7 @@
  * properties so the canvas follows the stylesheet.
  */
 (function () {
-    function cssVar(element, name) {
-        return getComputedStyle(element).getPropertyValue(name).trim();
-    }
+    const cssVar = (element, name) => window.StarPiBrand.cssVar(name, element);
 
     /** Index of the first point at or after t (after t when `strict`), in a series sorted by t. */
     function firstAt(series, t, strict = false) {

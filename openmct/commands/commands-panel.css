@@ -1,12 +1,9 @@
 /*
  * Command panel. Inherits the host's colours (Open MCT theme or Launch
- * Control); buttons are Open MCT's own c-button.
+ * Control); state colours are the brand's (brand/brand.css), buttons are
+ * Open MCT's own c-button.
  */
 .sp-cmd {
-    --sp-warn: #ffc14d;
-    --sp-ok: #5fd37a;
-    --sp-alarm: #ff6b61;
-
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -14,13 +11,6 @@
     overflow: auto;
     padding: 4px 2px;
     font-size: 13px;
-}
-
-/* Light mode (theme.js): darker state colours, to read on white. */
-:root[data-theme="light"] .sp-cmd {
-    --sp-warn: #9a5b00;
-    --sp-ok: #1e7a3c;
-    --sp-alarm: #c4271f;
 }
 
 .sp-cmd ul,

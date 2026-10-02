@@ -14,6 +14,7 @@ const openmct = window.openmct;
     // there is no CouchDB in this deployment.
     openmct.install(openmct.plugins.LocalStorage());
     openmct.install(window.StarPiTheme.plugin());
+    openmct.install(window.StarPiBrand.plugin());
     openmct.install(openmct.plugins.MyItems());
     openmct.install(openmct.plugins.UTCTimeSystem());
     openmct.install(openmct.plugins.TelemetryMean());

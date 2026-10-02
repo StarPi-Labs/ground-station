@@ -142,6 +142,7 @@
             <div class="lc-alert" data-ref="alert" role="alert" hidden></div>
 
             <header class="lc-head">
+                <div class="lc-brand">${window.StarPiBrand.lockup()}</div>
                 <div class="lc-clock">
                     <span class="lc-clock__label" data-ref="clock-label">Mission time</span>
                     <span class="lc-num lc-clock__value" data-ref="clock">--:--.-</span>

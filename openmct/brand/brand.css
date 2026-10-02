@@ -1,0 +1,128 @@
+/*
+ * StarPi brand: the one place colours and type are defined. Every view reads
+ * these tokens, directly or through its own short aliases, so a new dashboard
+ * gets the team's look by using them and a palette change lands everywhere.
+ *
+ * Three layers:
+ *   1. Palette: the mission patch's colours, as drawn. Not theme-aware; use
+ *      them for brand artwork (logos, stripes), not for UI surfaces.
+ *   2. Roles: what a colour is for (surface, ink, accent, state). Redefined
+ *      per theme below, following data-theme on <html> (theme.js).
+ *   3. Components: the brand lockup (.sp-lockup), reusable anywhere.
+ *
+ * State colours (ok / warn / alarm) stay apart from the brand's warm hues:
+ * orange and red mean the team, never "something is wrong". The UI accent is
+ * the patch's blue for the same reason.
+ */
+:root {
+    /* 1. Palette: sampled from the circular mission patch. */
+    --sp-night: #213152;
+    --sp-space: #2d4c7a;
+    --sp-haze: #4a6590;
+    --sp-red: #c82334;
+    --sp-orange: #e1603a;
+    --sp-gold: #d8a74a;
+    --sp-star: #ffffff;
+    /* The patch's planet rings, as a stripe. */
+    --sp-stripe: linear-gradient(90deg, var(--sp-gold), var(--sp-orange) 30%, var(--sp-red) 70%, var(--sp-space));
+
+    /* Type. Inter for the interface (the team's text face); the display face,
+       Nasalization, ships only as artwork in brand/assets/ (its licence
+       forbids web fonts). */
+    --sp-font: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --sp-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sp-ease: cubic-bezier(0.25, 1, 0.5, 1);
+
+    /* 2. Roles, dark theme (the default). Surfaces lean towards the patch's
+       night blue rather than neutral grey. */
+    --sp-bg: oklch(0.165 0.022 265);
+    --sp-panel: oklch(0.2 0.026 265);
+    --sp-line: oklch(0.32 0.03 265);
+    --sp-grid: oklch(0.27 0.027 265);
+    --sp-ink: oklch(0.97 0.005 265);
+    --sp-ink-2: oklch(0.86 0.014 265);
+    --sp-ink-3: oklch(0.72 0.02 265);
+    --sp-chrome: oklch(0.2 0.045 265);
+    --sp-chrome-ink: oklch(0.95 0.008 265);
+    --sp-accent: oklch(0.74 0.11 258);
+    /* For fills under white text (major buttons). */
+    --sp-accent-strong: oklch(0.5 0.13 262);
+    --sp-accent-soft: color-mix(in oklch, var(--sp-accent) 32%, transparent);
+    --sp-data: oklch(0.8 0.1 245);
+    --sp-ok: oklch(0.8 0.16 150);
+    --sp-warn: oklch(0.85 0.15 80);
+    --sp-alarm: oklch(0.69 0.2 27);
+}
+
+/* Light theme: same roles, contrast kept for daylight. State colours are
+   darker, to read as text on light panels. */
+:root[data-theme="light"] {
+    --sp-bg: oklch(0.96 0.006 265);
+    --sp-panel: oklch(0.995 0.002 265);
+    --sp-line: oklch(0.86 0.014 265);
+    --sp-grid: oklch(0.92 0.01 265);
+    --sp-ink: oklch(0.22 0.035 265);
+    --sp-ink-2: oklch(0.36 0.035 265);
+    --sp-ink-3: oklch(0.5 0.03 265);
+    --sp-chrome: oklch(0.93 0.016 265);
+    --sp-chrome-ink: oklch(0.25 0.05 265);
+    --sp-accent: oklch(0.45 0.11 260);
+    --sp-accent-strong: oklch(0.42 0.12 262);
+    --sp-accent-soft: color-mix(in oklch, var(--sp-accent) 22%, transparent);
+    --sp-data: oklch(0.5 0.14 255);
+    --sp-ok: oklch(0.52 0.15 150);
+    --sp-warn: oklch(0.56 0.13 65);
+    --sp-alarm: oklch(0.53 0.2 27);
+}
+
+/*
+ * 3. Lockup: patch + wordmark, for the head of any StarPi view.
+ *
+ *   <div class="sp-lockup">
+ *       <span class="sp-lockup__patch"></span>
+ *       <span class="sp-lockup__text">
+ *           <span class="sp-wordmark"></span>
+ *           <span class="sp-wordmark sp-wordmark--ground-station"></span>
+ *       </span>
+ *   </div>
+ *
+ * The wordmarks are SVG masks over currentColor, so they take the text colour
+ * of wherever they sit, in either theme. Size the lockup with font-size.
+ */
+.sp-lockup {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    font-size: 16px;
+    color: var(--sp-ink);
+}
+
+.sp-lockup__patch {
+    flex: 0 0 auto;
+    width: 2.6em;
+    height: 2.6em;
+    background: url("assets/patch-192.png") center / contain no-repeat;
+}
+
+.sp-lockup__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3em;
+}
+
+.sp-wordmark {
+    display: block;
+    height: 1em;
+    aspect-ratio: 3900 / 687;
+    background: currentColor;
+    mask: url("assets/wordmark.svg") left center / contain no-repeat;
+}
+
+.sp-wordmark--ground-station {
+    /* Justified under STARPI, as on the team's print material. */
+    width: 100%;
+    height: auto;
+    aspect-ratio: 10122 / 699;
+    color: var(--sp-ink-3);
+    mask-image: url("assets/wordmark-ground-station.svg");
+}

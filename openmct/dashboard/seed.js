@@ -19,12 +19,15 @@
     const sp = (key) => ({ namespace: 'starpi', key });
     const mine = (key) => ({ namespace: '', key });
 
-    // Colours for condition styles: state only, readable on the dark theme.
+    // Colours for condition styles, saved into the objects as values: the
+    // brand's for the resting and descent states (brand/brand.css palette,
+    // the same in both themes), plain state colours for the rest.
+    const brand = (token) => window.StarPiBrand.color(token);
     const STYLE = {
-        neutral: { backgroundColor: '#3a3f47', color: '#e8eaed' },
+        get neutral() { return { backgroundColor: brand('night'), color: brand('star') }; },
         active: { backgroundColor: '#f2a93b', color: '#15171a' },
         apogee: { backgroundColor: '#8ed1fc', color: '#15171a' },
-        descent: { backgroundColor: '#4a90d9', color: '#ffffff' },
+        get descent() { return { backgroundColor: brand('haze'), color: brand('star') }; },
         ok: { backgroundColor: '#2e7d4f', color: '#ffffff' },
         warn: { backgroundColor: '#f2c12e', color: '#15171a' },
         alarm: { backgroundColor: '#e0423b', color: '#ffffff' }

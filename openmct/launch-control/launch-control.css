@@ -4,20 +4,21 @@
  * alarm) — telemetry itself is drawn in a single data hue.
  */
 .starpi-lc {
-    --lc-bg: oklch(0.155 0.006 250);
-    --lc-panel: oklch(0.19 0.007 250);
-    --lc-line: oklch(0.31 0.01 250);
-    --lc-grid: oklch(0.27 0.008 250);
-    --lc-ink: oklch(0.97 0.004 250);
-    --lc-ink-2: oklch(0.85 0.008 250);
-    --lc-ink-3: oklch(0.71 0.01 250);
-    --lc-data: oklch(0.8 0.11 230);
-    --lc-ok: oklch(0.8 0.16 150);
-    --lc-warn: oklch(0.85 0.15 80);
-    --lc-alarm: oklch(0.69 0.2 27);
-    --lc-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --lc-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    --lc-ease: cubic-bezier(0.25, 1, 0.5, 1);
+    /* Aliases of the brand tokens (brand/brand.css), which carry both themes. */
+    --lc-bg: var(--sp-bg);
+    --lc-panel: var(--sp-panel);
+    --lc-line: var(--sp-line);
+    --lc-grid: var(--sp-grid);
+    --lc-ink: var(--sp-ink);
+    --lc-ink-2: var(--sp-ink-2);
+    --lc-ink-3: var(--sp-ink-3);
+    --lc-data: var(--sp-data);
+    --lc-ok: var(--sp-ok);
+    --lc-warn: var(--sp-warn);
+    --lc-alarm: var(--sp-alarm);
+    --lc-font: var(--sp-font);
+    --lc-mono: var(--sp-mono);
+    --lc-ease: var(--sp-ease);
 
     container-type: inline-size;
     height: 100%;
@@ -27,22 +28,6 @@
     font-family: var(--lc-font);
     font-size: 14px;
     line-height: 1.4;
-}
-
-/* Light mode (theme.js): same roles, contrast kept for daylight. State
-   colours are darker, to read as text on the light panels. */
-:root[data-theme="light"] .starpi-lc {
-    --lc-bg: oklch(0.955 0.004 250);
-    --lc-panel: oklch(0.995 0.002 250);
-    --lc-line: oklch(0.86 0.006 250);
-    --lc-grid: oklch(0.92 0.005 250);
-    --lc-ink: oklch(0.2 0.01 250);
-    --lc-ink-2: oklch(0.34 0.012 250);
-    --lc-ink-3: oklch(0.49 0.012 250);
-    --lc-data: oklch(0.52 0.15 245);
-    --lc-ok: oklch(0.52 0.15 150);
-    --lc-warn: oklch(0.56 0.13 65);
-    --lc-alarm: oklch(0.53 0.2 27);
 }
 
 .starpi-lc *,
@@ -183,6 +168,28 @@
     gap: 16px 28px;
     padding: 14px 20px;
     background: var(--lc-bg);
+}
+
+.lc-brand {
+    display: flex;
+    align-items: center;
+    padding-right: 28px;
+    border-right: 1px solid var(--lc-line);
+}
+
+.lc-brand .sp-lockup {
+    font-size: 20px;
+}
+
+/* Narrow: the patch alone, the wordmark returns when there is room. */
+.lc-brand .sp-lockup__text {
+    display: none;
+}
+
+@container (min-width: 760px) {
+    .lc-brand .sp-lockup__text {
+        display: flex;
+    }
 }
 
 .lc-clock {
