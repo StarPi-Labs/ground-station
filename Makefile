@@ -3,6 +3,8 @@
 # Compose settings (SP_LINKS, FRONTEND_PORT, ...) pass straight through, from
 # .env, the shell or the command line: `make up FRONTEND_PORT=9000`.
 
+-include .env
+
 COMPOSE ?= docker compose
 # Where `make deploy` sends the images, and the CPU they are built for
 # (linux/arm/v7 for a 32-bit Raspberry Pi OS).
@@ -82,9 +84,9 @@ lan:
 
 # Offline map for Launch Control, baked into the frontend image by the next
 # build. Needs internet and Docker (the pmtiles CLI runs from its image). The
-# default site is the simulator's pad (backend/src/links/sim.py).
-LAT ?= 45.4642
-LON ?= 9.1900
+# default site is the competition's pad A, also the simulator's pad (backend/src/links/sim.py).
+LAT ?= $(or $(SP_PAD_LAT),39.392547)
+LON ?= $(or $(SP_PAD_LON),-8.289517)
 RADIUS ?= 5
 
 tiles:

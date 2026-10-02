@@ -8,6 +8,9 @@ services:
       SP_LINKS: ${SP_LINKS:-ble}
       SP_DB_PATH: ${SP_DB_PATH:-/data/starpi.db}
       SP_SIM_RATE: ${SP_SIM_RATE:-350}
+      SP_PAD_LAT: ${SP_PAD_LAT:-39.392547}
+      SP_PAD_LON: ${SP_PAD_LON:--8.289517}
+      SP_PAD_ALTITUDE_M: ${SP_PAD_ALTITUDE_M:-160}
     volumes:
       # BlueZ is reached over the host's D-Bus (run scripts/setup-bluetooth.sh first).
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket

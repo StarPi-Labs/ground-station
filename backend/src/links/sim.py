@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from config import config
 from links.base import BadCommand, CommandSpec, Link, PacketHandler, UnknownCommand
 from protocol import LogMessage, MessagePayloadType, MessageType, SourceSubsystem
 
@@ -62,10 +63,10 @@ def scaled_rates(total: float) -> dict[MessageType, float]:
 TICK_S = 0.02  # how often due samples are sent, in a batch like BLE notifications
 MAX_BACKLOG_S = 1.0  # samples older than this are skipped, not replayed
 
-# Launch site: somewhere near Milan, 120 m above sea level.
-PAD_LAT = 45.4642
-PAD_LON = 9.1900
-PAD_ALTITUDE_M = 120.0
+# Launch site, set by SP_PAD_* (see .env.example); competition pad A by default.
+PAD_LAT = config.pad_lat
+PAD_LON = config.pad_lon
+PAD_ALTITUDE_M = config.pad_altitude_m
 
 # Derived once: end of the burn, apogee, parachute events, touchdown. No drag:
 # the burn is tuned so the ideal coast peaks near the target.

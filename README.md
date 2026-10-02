@@ -181,7 +181,7 @@ computer with internet and Docker, into `openmct/tiles/`, and the next image
 build (`make up`, `make deploy`, ...) includes it:
 
 ```sh
-make tiles LAT=45.4642 LON=9.1900 RADIUS=5   # defaults: the simulator's pad, 5 km
+make tiles LAT=39.392547 LON=-8.289517 RADIUS=5   # defaults: competition pad A, 5 km
 make up                                      # or make deploy PI=...
 ```
 
