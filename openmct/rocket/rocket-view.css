@@ -77,17 +77,17 @@
     color: #15171a;
 }
 
-.starpi-rocket .sr-chip[data-phase="APOGEE"] {
+.starpi-rocket .sr-chip[data-phase="DROGUE"] {
     background: var(--sr-apogee);
     color: #15171a;
 }
 
-.starpi-rocket .sr-chip[data-phase="DESCENT"] {
+.starpi-rocket .sr-chip[data-phase="MAIN"] {
     background: var(--sr-descent);
     color: oklch(0.97 0.004 250);
 }
 
-.starpi-rocket .sr-chip[data-phase="LANDED"] {
+.starpi-rocket .sr-chip[data-phase="TOUCHDOWN"] {
     background: var(--sr-ok);
     color: #15171a;
 }

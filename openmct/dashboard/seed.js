@@ -134,10 +134,10 @@
                         criterion('alarm-stale-c', sp('baro.altitude'), 'isStale', ['5'], 'dataReceived')
                     ]),
                     // Faster than the drogue allows: recovery may have failed.
-                    condition('alarm-descent', 'DESCENT TOO FAST', [
-                        criterion('alarm-descent-phase', sp('flight.phase'), 'enumValueIs', [phaseIndex('DESCENT')]),
-                        criterion('alarm-descent-speed', sp('baro.speed'), 'lessThan', ['-35'])
-                    ]),
+                    ...['DROGUE', 'MAIN'].map((phase) => condition(`alarm-descent-${phase}`, 'DESCENT TOO FAST', [
+                        criterion(`alarm-descent-${phase}-phase`, sp('flight.phase'), 'enumValueIs', [phaseIndex(phase)]),
+                        criterion(`alarm-descent-${phase}-speed`, sp('baro.speed'), 'lessThan', ['-35'])
+                    ])),
                     // History fails on a corrupt file, while live data still flows.
                     condition('alarm-storage', 'DATABASE CORRUPT', [
                         criterion('alarm-storage-c', sp('station.storage'), 'enumValueIs', ['0'])
@@ -149,12 +149,12 @@
 
         // --- condition widgets -----------------------------------------------
         const phaseStyles = {
-            'phase-PAD': STYLE.neutral,
+            'phase-IDLE': STYLE.neutral,
             'phase-BOOST': STYLE.active,
             'phase-COAST': STYLE.active,
-            'phase-APOGEE': STYLE.apogee,
-            'phase-DESCENT': STYLE.descent,
-            'phase-LANDED': STYLE.ok,
+            'phase-DROGUE': STYLE.apogee,
+            'phase-MAIN': STYLE.descent,
+            'phase-TOUCHDOWN': STYLE.ok,
             'phase-default': STYLE.neutral
         };
         const phaseWidget = add('conditionWidget', 'starpi-w-phase', 'Flight phase', folder, {
@@ -173,7 +173,8 @@
                     'alarm-offline': STYLE.alarm,
                     'alarm-link': STYLE.alarm,
                     'alarm-stale': STYLE.warn,
-                    'alarm-descent': STYLE.alarm,
+                    'alarm-descent-DROGUE': STYLE.alarm,
+                    'alarm-descent-MAIN': STYLE.alarm,
                     'alarm-storage': STYLE.warn,
                     'alarm-default': STYLE.ok
                 })

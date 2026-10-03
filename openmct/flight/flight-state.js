@@ -1,10 +1,11 @@
 /*
- * Flight phase estimation for the Launch Control view.
+ * Flight tracking for the flight views.
  *
- * The rocket does not report its flight state, ground altitude or apogee, so
- * they are inferred here from barometric altitude/speed and the accelerometer.
- * Pure logic, no DOM: runs in the browser (window.StarPiFlight) and under
- * `node --test`.
+ * The rocket reports its flight state (T_ROCKET_STATE); the rest is derived
+ * here: launch time and phase times from the state changes, ground level and
+ * altitude above it from the barometer, apogee and other records, the pad
+ * position from GPS. Pure logic, no DOM: runs in the browser
+ * (window.StarPiFlight) and under `node --test`.
  */
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
@@ -17,26 +18,36 @@
     // The rocket's accelerometer reports milli-g.
     const MG_PER_G = 1000;
 
-    const PHASES = ['PAD', 'BOOST', 'COAST', 'APOGEE', 'DESCENT', 'LANDED'];
-    // Parachutes out, estimated from the descent rate (FlightTracker.recovery).
-    const RECOVERY = ['NONE', 'DROGUE', 'MAIN'];
+    // The rocket's own flight state (T_ROCKET_STATE, RocketState in the
+    // firmware's logger.h), in wire order: the index is the enum's ordinal.
+    const PHASES = ['IDLE', 'BOOST', 'COAST', 'DROGUE', 'MAIN', 'TOUCHDOWN'];
+    const PHASE_LABELS = {
+        IDLE: 'On pad',
+        BOOST: 'Boost',
+        COAST: 'Coast',
+        DROGUE: 'Drogue',
+        MAIN: 'Main',
+        TOUCHDOWN: 'Touchdown'
+    };
+    const ON_GROUND = new Set([null, 'IDLE', 'TOUCHDOWN']);
+    // Under a parachute: the first of these marks apogee.
+    const DESCENDING = new Set(['DROGUE', 'MAIN']);
 
     const DEFAULTS = {
-        launchAccelG: 2.0, // PAD -> BOOST when the accelerometer reads more than this...
-        launchHoldMs: 200, // ...for at least this long,
-        launchSpeed: 15, // or the vertical speed exceeds this (m/s).
-        burnoutAccelG: 1.2, // BOOST -> COAST below this.
-        apogeeHoldMs: 2000, // How long APOGEE stays on screen before DESCENT.
-        apogeeDropM: 5, // Fallback apogee trigger: this far below the peak.
-        apogeeArmMs: 1000, // No apogee this soon after launch (baro lag at liftoff).
-        mainSpeed: 12, // Main chute out once the fall under the drogue slows below this (m/s)
-        mainHoldMs: 1000, // for this long.
-        landedSpeed: 1, // DESCENT -> LANDED when |speed| stays below this (m/s)
-        landedAgl: 15, // and the altitude above ground stays below this (m)
-        landedHoldMs: 5000, // for this long.
         groundWindow: 50, // Pad altitude samples in the ground-level median.
         padFixWindow: 20 // Pad GPS fixes averaged into the pad position.
     };
+
+    /** A phase from a T_ROCKET_STATE payload ("RS_BOOST", or its ordinal), or null. */
+    function phaseOf(payload) {
+        if (typeof payload === 'string') {
+            const name = payload.replace(/^RS_/, '');
+
+            return PHASES.includes(name) ? name : null;
+        }
+
+        return PHASES[payload] ?? null;
+    }
 
     function median(values) {
         const sorted = [...values].sort((a, b) => a - b);
@@ -77,7 +88,7 @@
     }
 
     /**
-     * Feed samples in time order with `update()`; read the estimate with
+     * Feed samples in time order with `update()`; read the state with
      * `snapshot()`. Samples older than the last one seen are ignored, so live
      * data that overlaps a history request cannot rewind the state.
      */
@@ -89,7 +100,7 @@
         }
 
         reset() {
-            this.phase = 'PAD';
+            this.phase = null; // no T_ROCKET_STATE yet
             this.lastTime = -Infinity;
             this.clearGroundSamples();
             this.padFixes = [];
@@ -109,14 +120,7 @@
             this.maxAgl = null;
             this.maxSpeed = 0;
             this.maxAccelG = 0;
-            this.highAccelSince = null;
-            this.landedSince = null;
             this.track = [];
-            // Dual deploy: the drogue opens at apogee, the main lower down.
-            this.recovery = null; // null, 'DROGUE' or 'MAIN'
-            this.mainTime = null;
-            this.fastDescent = false;
-            this.slowSince = null;
         }
 
         clearGroundSamples() {
@@ -163,6 +167,7 @@
          *   { t, kind: 'alt', altitude, speed }
          *   { t, kind: 'accel', x, y, z }       mg
          *   { t, kind: 'gps', lat, lon }
+         *   { t, kind: 'state', state }         T_ROCKET_STATE payload
          */
         update(sample) {
             if (!(sample.t >= this.lastTime)) {
@@ -176,6 +181,8 @@
                 this.onAccel(sample);
             } else if (sample.kind === 'gps') {
                 this.onFix(sample);
+            } else if (sample.kind === 'state') {
+                this.onState(sample);
             }
 
             return true;
@@ -194,38 +201,16 @@
                     this.groundSamples.shift();
                 }
                 this.groundMedian = undefined;
-            }
-
-            if (this.onGround() && this.speed > this.config.launchSpeed) {
-                this.launch(t);
-            }
-
-            if (!this.onGround()) {
+            } else {
                 this.trackRecords(t);
-                this.advance(t);
             }
         }
 
-        onAccel({ t, x, y, z }) {
+        onAccel({ x, y, z }) {
             const g = magnitude({ x, y, z }) / MG_PER_G;
             this.accelG = g;
-
-            if (this.onGround()) {
-                if (g > this.config.launchAccelG) {
-                    this.highAccelSince ??= t;
-                    if (t - this.highAccelSince >= this.config.launchHoldMs) {
-                        this.launch(this.highAccelSince);
-                    }
-                } else {
-                    this.highAccelSince = null;
-                }
-
-                return;
-            }
-
-            this.maxAccelG = Math.max(this.maxAccelG, g);
-            if (this.phase === 'BOOST' && g < this.config.burnoutAccelG) {
-                this.enter('COAST', t);
+            if (!this.onGround()) {
+                this.maxAccelG = Math.max(this.maxAccelG, g);
             }
         }
 
@@ -235,7 +220,7 @@
             }
             this.fix = { t, lat, lon };
 
-            if (this.phase === 'PAD') {
+            if (this.phase === null || this.phase === 'IDLE') {
                 this.padFixes.push({ lat, lon });
                 if (this.padFixes.length > this.config.padFixWindow) {
                     this.padFixes.shift();
@@ -254,23 +239,55 @@
             }
         }
 
+        onState({ t, state }) {
+            const phase = phaseOf(state);
+            const previous = this.phase;
+            if (phase === null || phase === previous) {
+                return;
+            }
+            this.phase = phase;
+
+            if (previous === 'TOUCHDOWN') {
+                // Back on a pad (or straight into another flight): start over,
+                // with the ground measured since touchdown.
+                this.newFlight();
+                this.newPad();
+                this.frozenGround = null;
+            }
+            if (phase === 'IDLE') {
+                return;
+            }
+            // A state can be missed (a lost packet): leaving the ground at all is the launch.
+            if (ON_GROUND.has(previous) && previous !== null && !ON_GROUND.has(phase)) {
+                this.launch(t);
+            } else if (previous === null && !ON_GROUND.has(phase)) {
+                // First state seen mid-flight: the altitudes so far were not
+                // the ground, and the launch time is unknown.
+                this.clearGroundSamples();
+            }
+            if (DESCENDING.has(phase) && !DESCENDING.has(previous) && this.apogee === null && this.maxAgl !== null) {
+                this.apogee = { agl: this.maxAgl, t: this.maxAglTime };
+            }
+            if (phase === 'TOUCHDOWN') {
+                // Keep the pad's ground level on screen; samples from here on
+                // set the ground for the next launch.
+                this.clearGroundSamples();
+            }
+            this.events.push({ phase, t });
+        }
+
+        newPad() {
+            this.padFixes = [];
+            this.padPosition = this.fix ? { lat: this.fix.lat, lon: this.fix.lon } : null;
+        }
+
         onGround() {
-            return this.phase === 'PAD' || this.phase === 'LANDED';
+            return ON_GROUND.has(this.phase);
         }
 
         launch(t) {
-            if (this.phase === 'LANDED') {
-                // Another flight after landing (or the simulator looping).
-                this.newFlight();
-                this.padFixes = [];
-                if (this.fix) {
-                    this.padPosition = { lat: this.fix.lat, lon: this.fix.lon };
-                }
-            }
             this.frozenGround = this.padMedian() ?? this.altitude;
             this.launchTime = t;
-            this.highAccelSince = null;
-            this.enter('BOOST', t);
         }
 
         trackRecords(t) {
@@ -282,73 +299,6 @@
             if (this.speed !== null) {
                 this.maxSpeed = Math.max(this.maxSpeed, this.speed);
             }
-        }
-
-        advance(t) {
-            const speed = this.speed ?? 0;
-            const agl = this.agl ?? 0;
-            const cfg = this.config;
-
-            const armed = t - this.launchTime >= cfg.apogeeArmMs;
-            if (armed && (this.phase === 'BOOST' || this.phase === 'COAST')) {
-                const falling = speed <= 0 || (this.maxAgl !== null && agl < this.maxAgl - cfg.apogeeDropM);
-                if (falling) {
-                    this.apogee = { agl: this.maxAgl, t: this.maxAglTime };
-                    this.enter('APOGEE', this.maxAglTime ?? t);
-                    this.recovery = 'DROGUE';
-                }
-            } else if (this.phase === 'APOGEE') {
-                if (t - this.apogee.t >= cfg.apogeeHoldMs) {
-                    this.enter('DESCENT', t);
-                }
-            }
-
-            if (this.phase === 'DESCENT' || this.phase === 'APOGEE') {
-                this.trackRecovery(t, speed, agl);
-                if (Math.abs(speed) < cfg.landedSpeed && agl < cfg.landedAgl) {
-                    this.landedSince ??= t;
-                    if (t - this.landedSince >= cfg.landedHoldMs) {
-                        this.enter('LANDED', this.landedSince);
-                        // Keep the pad's ground level on screen; samples from
-                        // here on set the ground for the next launch.
-                        this.clearGroundSamples();
-                    }
-                } else {
-                    this.landedSince = null;
-                }
-            }
-        }
-
-        /**
-         * Main chute: the fall under the drogue first gets fast, then slows
-         * well above the ground. A single-deploy flight never gets fast, so
-         * it stays on DROGUE.
-         */
-        trackRecovery(t, speed, agl) {
-            const cfg = this.config;
-            if (this.recovery !== 'DROGUE') {
-                return;
-            }
-            if (speed <= -cfg.mainSpeed) {
-                this.fastDescent = true;
-                this.slowSince = null;
-            } else if (this.fastDescent && agl >= cfg.landedAgl) {
-                this.slowSince ??= t;
-                if (t - this.slowSince >= cfg.mainHoldMs) {
-                    this.recovery = 'MAIN';
-                    this.mainTime = this.slowSince;
-                }
-            } else {
-                this.slowSince = null;
-            }
-        }
-
-        enter(phase, t) {
-            if (phase === this.phase) {
-                return;
-            }
-            this.phase = phase;
-            this.events.push({ phase, t });
         }
 
         snapshot() {
@@ -365,8 +315,6 @@
                 accelG: this.accelG,
                 launchTime: this.launchTime,
                 apogee: this.apogee,
-                recovery: this.recovery,
-                mainTime: this.mainTime,
                 maxAgl: this.maxAgl,
                 maxSpeed: this.maxSpeed,
                 maxAccelG: this.maxAccelG,
@@ -383,7 +331,8 @@
         G,
         MG_PER_G,
         PHASES,
-        RECOVERY,
+        PHASE_LABELS,
+        phaseOf,
         DEFAULTS,
         FlightTracker,
         distanceBearing,

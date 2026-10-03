@@ -5,8 +5,9 @@
  * follows the time conductor: Real-time shows the live flight, Fixed replays
  * whatever window is selected. Backend health and the command panel are
  * shared with the rest of the StarPi plugin (window.StarPi,
- * commands/commands-panel.js). Flight phase, ground level and records are
- * estimated by flight-state.js, with the thresholds from Flight settings.
+ * commands/commands-panel.js). The flight phase is the rocket's own
+ * (T_ROCKET_STATE); launch time, ground level and records are derived from it
+ * and the sensors by flight-state.js.
  */
 (function () {
     const NAMESPACE = 'starpi';
@@ -20,20 +21,12 @@
         pressure: 'T_PRESSURE',
         temp: 'T_TEMPERATURE',
         gps: 'T_GPS',
-        log: 'T_SYSLOG'
+        log: 'T_SYSLOG',
+        state: 'T_ROCKET_STATE'
     };
     // Sources shown only as their latest value (see ingest()): their history
     // would be up to 90 000 packets per load, for one number each.
     const LATEST_ONLY = new Set(['gyro', 'orient', 'pressure', 'temp']);
-
-    const PHASE_LABELS = {
-        PAD: 'On pad',
-        BOOST: 'Boost',
-        COAST: 'Coast',
-        APOGEE: 'Apogee',
-        DESCENT: 'Descent',
-        LANDED: 'Landed'
-    };
 
     const STALE_WARN_MS = 2000;
     const STALE_ALARM_MS = 5000;
@@ -147,8 +140,8 @@
                     <span class="lc-clock__label" data-ref="clock-label">Mission time</span>
                     <span class="lc-num lc-clock__value" data-ref="clock">--:--.-</span>
                 </div>
-                <ol class="lc-phases" data-ref="phases" aria-label="Flight phase (estimated)">
-                    ${Object.entries(PHASE_LABELS).map(([key, label]) => `
+                <ol class="lc-phases" data-ref="phases" aria-label="Flight phase">
+                    ${Object.entries(window.StarPiFlight.PHASE_LABELS).map(([key, label]) => `
                         <li class="lc-phase" data-phase="${key}">
                             <span class="lc-phase__name">${label}</span>
                             <span class="lc-num lc-phase__time" data-ref="phase-${key}"></span>
@@ -284,7 +277,7 @@
             this.rocket.show(this.refs.rocket);
             this.basemap = new window.StarPiBasemap.Basemap(this.refs.map);
             this.initBasemap();
-            // Recalibrated thresholds: re-estimate the window with them.
+            // A new ground level in Flight settings: recompute the window with it.
             this.unsubscribers.push(window.StarPi.flight.onSettings(() => this.load()));
             // The canvases copy their colours from the stylesheet when drawn.
             this.unsubscribers.push(window.StarPiTheme.onChange(() => {
@@ -503,6 +496,11 @@
             case 'gps':
                 this.tracker.update({ t, kind: 'gps', lat: datum.lat, lon: datum.lon });
                 break;
+            case 'state':
+                this.tracker.update({ t, kind: 'state', state: datum.state });
+                // Phase changes are drawn on the charts.
+                this.chartsDirty = true;
+                break;
             case 'log':
                 this.logEntries.push({ t, message: datum.message });
                 if (this.logEntries.length > MAX_LOG) {
@@ -570,7 +568,7 @@
             const { refs } = this;
 
             // Mission clock: T+ from launch, frozen at landing.
-            const landing = flight.events.find((e) => e.phase === 'LANDED');
+            const landing = flight.events.find((e) => e.phase === 'TOUCHDOWN');
             if (flight.launchTime === null) {
                 refs.clockLabel.textContent = 'Mission time';
                 refs.clock.textContent = 'T+ --:--.-';
@@ -712,10 +710,7 @@
             this.chartsDirty = false;
             const { refs, series } = this;
             const ground = flight.ground ?? 0;
-            // Descent follows apogee by two seconds: its rule would only crowd the charts.
-            const events = flight.events
-                .filter((e) => e.phase !== 'DESCENT')
-                .map((e) => ({ t: e.t, label: PHASE_LABELS[e.phase] }));
+            const events = flight.events.map((e) => ({ t: e.t, label: window.StarPiFlight.PHASE_LABELS[e.phase] }));
             const window_ = { start: bounds.start, end: bounds.end, events };
 
             const hasData = series.alt.length || series.accel.length;

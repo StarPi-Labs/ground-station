@@ -1,68 +1,52 @@
 /*
- * Flight estimates as Open MCT telemetry: phase, mission time, altitude above
- * ground, records, distance from the pad... (see POINTS). They behave like any
- * other telemetry object, so plots, LAD tables, gauges and condition sets can
- * use them.
+ * Flight telemetry as Open MCT objects: the rocket's reported phase, and what
+ * is derived around it - mission time, altitude above ground, records,
+ * distance from the pad... (see flightPoints). They behave like any other
+ * telemetry object, so plots, LAD tables, gauges and condition sets can use
+ * them.
  *
  * Live values come from one FlightTracker (flight-state.js) fed by the
  * websocket, primed with the last LOOKBACK_MS of history so a page opened
- * mid-flight knows the phase and the ground level. History for a time window
- * is computed by replaying the stored packets through a fresh tracker.
+ * mid-flight knows the launch time and the ground level. History for a time
+ * window is computed by replaying the stored packets through a fresh tracker.
  *
- * The thresholds come from the "Flight settings" object (FlightSettings type
- * below), edited from the UI with Edit Properties.
+ * A ground level set in the "Flight settings" object (FlightSettings type
+ * below, edited with Edit Properties) replaces the pad median.
  */
 (function () {
     const TYPE = 'starpi.flight';
     const SETTINGS_TYPE = 'starpi.flight-settings';
     const SETTINGS_ID = { namespace: '', key: 'starpi-flight-settings' };
     // History fed to a tracker before the window it reports on: long enough
-    // to find the pad's ground level and a flight already in progress.
+    // to find the pad's ground level and the launch of a flight in progress.
     const LOOKBACK_MS = 10 * 60 * 1000;
-    const SOURCES = { alt: 'T_ALT_SPEED', accel: 'T_ACCELLERATION', gps: 'T_GPS' };
-
-    // Thresholds editable from the UI, in the units the form shows.
-    const SETTINGS = [
-        { key: 'launchAccelG', name: 'Launch: acceleration above (g)' },
-        { key: 'launchHoldMs', name: 'Launch: held for at least (ms)' },
-        { key: 'launchSpeed', name: 'Launch: or vertical speed above (m/s)' },
-        { key: 'burnoutAccelG', name: 'Burnout: acceleration below (g)' },
-        { key: 'apogeeArmMs', name: 'Apogee: not before launch + (ms)' },
-        { key: 'apogeeDropM', name: 'Apogee: or this far below the peak (m)' },
-        { key: 'mainSpeed', name: 'Main chute: descent slower than (m/s)' },
-        { key: 'landedSpeed', name: 'Landed: |vertical speed| below (m/s)' },
-        { key: 'landedAgl', name: 'Landed: height above ground below (m)' },
-        { key: 'landedHoldMs', name: 'Landed: for at least (ms)' }
-    ];
+    const SOURCES = { alt: 'T_ALT_SPEED', accel: 'T_ACCELLERATION', gps: 'T_GPS', state: 'T_ROCKET_STATE' };
+    // What the flight objects go stale with, unless a point names its own source.
+    const STALE_SOURCE = 'T_ALT_SPEED';
 
     function flightPoints() {
-        const { PHASES, RECOVERY } = window.StarPiFlight;
+        const { PHASES } = window.StarPiFlight;
         const launched = (tracker) => tracker.launchTime !== null;
 
         return {
             'flight.phase': {
                 name: 'Flight phase',
                 format: 'enum',
+                // The values are RocketState's ordinals, as the rocket sends them.
                 enumerations: PHASES.map((phase, index) => ({ value: index, string: phase })),
-                on: ['alt', 'accel'],
-                value: (tracker) => PHASES.indexOf(tracker.phase)
-            },
-            'flight.recovery': {
-                name: 'Parachutes',
-                format: 'enum',
-                enumerations: RECOVERY.map((state, index) => ({ value: index, string: state })),
-                on: ['alt'],
-                value: (tracker) => RECOVERY.indexOf(tracker.recovery ?? 'NONE')
+                on: ['state'],
+                stale: 'T_ROCKET_STATE',
+                value: (tracker) => (tracker.phase === null ? null : PHASES.indexOf(tracker.phase))
             },
             'flight.mission-time': {
                 name: 'Mission time',
                 format: 'starpi.mission-time',
-                on: ['alt', 'accel'],
+                on: ['alt', 'accel', 'state'],
                 value: (tracker, t) => {
                     if (!launched(tracker)) {
                         return null;
                     }
-                    const landed = tracker.events.find((event) => event.phase === 'LANDED');
+                    const landed = tracker.events.find((event) => event.phase === 'TOUCHDOWN');
 
                     return ((landed ? landed.t : t) - tracker.launchTime) / 1000;
                 }
@@ -190,6 +174,9 @@
         if (kind === 'accel') {
             return { t, kind, x: p.x, y: p.y, z: p.z };
         }
+        if (kind === 'state') {
+            return { t, kind, state: packet.payload };
+        }
 
         return { t, kind, lat: p.x, lon: p.y };
     }
@@ -209,7 +196,7 @@
             this.type = TYPE;
             this.points = flightPoints();
             // Point keys by the sample kind that updates them: looked up for every sample.
-            this.pointsOn = { alt: [], accel: [], gps: [] };
+            this.pointsOn = Object.fromEntries(Object.keys(SOURCES).map((kind) => [kind, []]));
             for (const [key, point] of Object.entries(this.points)) {
                 point.on.forEach((kind) => this.pointsOn[kind].push(key));
             }
@@ -240,18 +227,14 @@
             return [domain, value];
         }
 
+        /** The message type a point goes stale with. */
+        staleSource(key) {
+            return this.points[key]?.stale ?? STALE_SOURCE;
+        }
+
         /** FlightTracker options from the current settings. */
         options() {
-            const options = {};
-            for (const { key } of SETTINGS) {
-                const value = numberOrNull(this.settings[key]);
-                if (value !== null) {
-                    options[key] = value;
-                }
-            }
-            options.groundOverride = numberOrNull(this.settings.groundAltitude);
-
-            return options;
+            return { groundOverride: numberOrNull(this.settings.groundAltitude) };
         }
 
         onSettings(callback) {
@@ -285,7 +268,7 @@
             try {
                 samples = await this.history(now - LOOKBACK_MS, now);
             } catch (error) {
-                console.warn('StarPi: could not prime the flight estimates', error);
+                console.warn('StarPi: could not prime the flight state', error);
             }
             if (generation !== this.generation) {
                 return;
@@ -424,9 +407,9 @@
 
         applySettings(configuration = {}) {
             // Compare what the tracker would run with, not the raw form: the
-            // settings object usually holds the defaults, and restarting for
-            // it re-fetched minutes of history on every page load.
-            const effective = () => JSON.stringify({ ...window.StarPiFlight.DEFAULTS, ...this.options() });
+            // settings object can hold other keys (the phase thresholds of
+            // older versions), and restarting re-fetches minutes of history.
+            const effective = () => JSON.stringify(this.options());
             const before = effective();
             this.settings = { ...configuration };
             if (effective() === before) {
@@ -437,29 +420,21 @@
         }
     }
 
-    function settingsType() {
-        const { DEFAULTS } = window.StarPiFlight;
+    const GROUND_FIELD = 'Ground level override (m MSL, empty = pad median)';
 
+    function settingsType() {
         return {
             name: 'Flight Settings',
-            description: 'Thresholds the dashboard uses to estimate the flight phase and the ground level.',
+            description: 'Ground level the dashboard measures altitude above ground from.',
             cssClass: 'icon-gear',
             creatable: false,
             initialize(domainObject) {
-                domainObject.configuration = Object.fromEntries(SETTINGS.map(({ key }) => [key, DEFAULTS[key]]));
-                domainObject.configuration.groundAltitude = '';
+                domainObject.configuration = { groundAltitude: '' };
             },
             form: [
-                ...SETTINGS.map(({ key, name }) => ({
-                    key,
-                    name,
-                    control: 'numberfield',
-                    cssClass: 'l-input-sm',
-                    property: ['configuration', key]
-                })),
                 {
                     key: 'groundAltitude',
-                    name: 'Ground level override (m MSL, empty = pad median)',
+                    name: GROUND_FIELD,
                     control: 'textfield',
                     cssClass: 'l-input-sm',
                     property: ['configuration', 'groundAltitude']
@@ -468,9 +443,8 @@
         };
     }
 
-    /** Read-only summary of the thresholds; they are edited with Edit Properties. */
+    /** Read-only summary of the settings; they are edited with Edit Properties. */
     function settingsView(openmct) {
-        const { DEFAULTS } = window.StarPiFlight;
         const escape = (text) => String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
         return {
@@ -481,24 +455,19 @@
             view(domainObject) {
                 let unobserve;
                 const render = (element, configuration = {}) => {
-                        const rows = SETTINGS.map(({ key, name }) => {
-                            const value = configuration[key] ?? DEFAULTS[key];
-
-                            return `<tr><td>${escape(name)}</td><td>${escape(value)}</td></tr>`;
-                        });
-                        const ground = configuration.groundAltitude === '' || configuration.groundAltitude === undefined
-                            ? 'pad median'
-                            : `${escape(configuration.groundAltitude)} m MSL`;
-                        rows.push(`<tr><td>Ground level</td><td>${ground}</td></tr>`);
-                        element.innerHTML = `
-                            <div style="padding: 12px 16px; overflow: auto; height: 100%;">
-                                <p style="margin: 0 0 12px;">Thresholds used to estimate the flight phase and the ground level.
-                                    Change them with <strong>Edit Properties</strong> (the ⋯ menu); every flight view picks them up at once.</p>
-                                <table class="c-table c-table--sortable" style="width: auto;">
-                                    <thead><tr><th>Setting</th><th>Value</th></tr></thead>
-                                    <tbody>${rows.join('')}</tbody>
-                                </table>
-                            </div>`;
+                    const ground = configuration.groundAltitude === '' || configuration.groundAltitude === undefined
+                        ? 'pad median'
+                        : `${escape(configuration.groundAltitude)} m MSL`;
+                    element.innerHTML = `
+                        <div style="padding: 12px 16px; overflow: auto; height: 100%;">
+                            <p style="margin: 0 0 12px;">The flight phase comes from the rocket. Altitude above ground
+                                is measured from the median altitude on the pad, or from a ground level set here with
+                                <strong>Edit Properties</strong> (the ⋯ menu); every flight view picks it up at once.</p>
+                            <table class="c-table c-table--sortable" style="width: auto;">
+                                <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+                                <tbody><tr><td>Ground level</td><td>${ground}</td></tr></tbody>
+                            </table>
+                        </div>`;
                 };
 
                 return {
@@ -518,6 +487,5 @@
 
     FlightService.SETTINGS_ID = SETTINGS_ID;
     FlightService.SETTINGS_TYPE = SETTINGS_TYPE;
-    FlightService.SETTINGS = SETTINGS;
     window.StarPiFlightService = FlightService;
 }());

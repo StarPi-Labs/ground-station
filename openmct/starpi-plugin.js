@@ -11,7 +11,7 @@
  * /api and /ws): history from GET /api/packets, live data from the websocket,
  * link health from GET /api/health.
  *
- * Also exposes window.StarPi for the other StarPi scripts (flight estimates,
+ * Also exposes window.StarPi for the other StarPi scripts (flight telemetry,
  * Launch Control, dashboard seeding).
  */
 (function () {
@@ -72,6 +72,10 @@
         T_SYSLOG: {
             name: 'System log',
             fields: [{ key: 'message', name: 'Message', from: null, format: 'string' }]
+        },
+        T_ROCKET_STATE: {
+            name: 'Rocket state',
+            fields: [{ key: 'state', name: 'State', from: null, format: 'string' }]
         }
     };
 
@@ -651,7 +655,7 @@
         return function install(openmct) {
             const flight = new window.StarPiFlightService(openmct);
             window.StarPi.flight = flight;
-            FOLDERS.flight = { name: 'Flight (estimated)', children: Object.keys(flight.points) };
+            FOLDERS.flight = { name: 'Flight', children: Object.keys(flight.points) };
 
             openmct.telemetry.addFormat(MISSION_TIME_FORMAT);
             openmct.objects.addRoot({ namespace: NAMESPACE, key: ROOT_KEY });
@@ -802,7 +806,7 @@
                 }
             });
 
-            // Flight estimates (flight/flight-service.js).
+            // Flight phase and what is derived from it (flight/flight-service.js).
             openmct.telemetry.addProvider({
                 supportsRequest: is(flight.type),
                 request(domainObject, options) {
@@ -818,11 +822,13 @@
                     );
                 },
                 supportsStaleness: is(flight.type),
-                isStale() {
-                    return Promise.resolve({ isStale: stream.isStale('T_ALT_SPEED'), timestamp: Date.now() });
+                isStale(domainObject) {
+                    const type = flight.staleSource(domainObject.identifier.key);
+
+                    return Promise.resolve({ isStale: stream.isStale(type), timestamp: Date.now() });
                 },
                 subscribeToStaleness(domainObject, callback) {
-                    return staleness.subscribe('T_ALT_SPEED', callback);
+                    return staleness.subscribe(flight.staleSource(domainObject.identifier.key), callback);
                 }
             });
 

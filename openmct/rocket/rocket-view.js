@@ -1,8 +1,8 @@
 /*
  * "Rocket attitude": a 3D model of the rocket turned to the orientation it
- * reports (T_ORIENTATION), with cues for the estimated flight state: an
- * exhaust flame during the burn, the drogue from apogee, the main parachute
- * once the descent slows (flight.phase and flight.recovery, flight-service.js).
+ * reports (T_ORIENTATION), with cues for the flight state it reports
+ * (flight.phase, flight-service.js): an exhaust flame during the burn, then
+ * the drogue and the main parachute as they deploy.
  *
  * Follows the time conductor like any other view: Real-time shows the live
  * rocket, Fixed shows it at the end of the selected window.
@@ -28,16 +28,6 @@
     // Z the roll. Angles in degrees, applied as intrinsic X, then Y, then Z.
     const EULER_ORDER = 'XYZ';
 
-    const PHASE_LABELS = {
-        PAD: 'On pad',
-        BOOST: 'Boost',
-        COAST: 'Coast',
-        APOGEE: 'Apogee',
-        DESCENT: 'Descent',
-        LANDED: 'Landed'
-    };
-    const RECOVERY_LABELS = { NONE: 'Stowed', DROGUE: 'Drogue out', MAIN: 'Main out' };
-
     const COLORS = {
         body: 0xeef0f3,
         accent: 0xd8412f,
@@ -58,6 +48,7 @@
     const BODY_TOP_Y = 0.55;
     const RADIUS = 0.075;
     const ATTACH_Y = 0.25; // where the shock cord leaves the body
+    // Keyed by the flight phase the parachute is out in.
     const CHUTES = {
         DROGUE: { radius: 0.4, height: 2, colors: COLORS.drogue, lines: 1.1 },
         MAIN: { radius: 1.05, height: 2.9, colors: COLORS.main, lines: 1.5 }
@@ -84,7 +75,6 @@
             <div class="sr-overlay">
                 <div class="sr-chips">
                     <span class="sr-chip" data-ref="phase">—</span>
-                    <span class="sr-chip" data-ref="recovery" hidden></span>
                     <span class="sr-chip sr-chip--warn" data-ref="stale" hidden>No orientation data</span>
                 </div>
                 <dl class="sr-angles">
@@ -144,7 +134,7 @@
             };
             Object.values(this.chutes).forEach((chute) => this.scene.add(chute.group));
 
-            this.state = { phase: null, recovery: 'NONE', hasAttitude: false };
+            this.state = { phase: null, hasAttitude: false };
             this.timer = new THREE.Timer();
             this.timer.connect(document);
         }
@@ -300,10 +290,9 @@
         }
 
         /** Returns true when the flame or parachutes change. */
-        setFlight(phase, recovery) {
-            const changed = phase !== this.state.phase || recovery !== this.state.recovery;
+        setFlight(phase) {
+            const changed = phase !== this.state.phase;
             this.state.phase = phase;
-            this.state.recovery = recovery;
 
             return changed;
         }
@@ -341,7 +330,7 @@
             const dt = this.animating ? Math.min(this.timer.getDelta(), 0.1) : 1 / 60;
             const t = this.timer.getElapsed();
             const ease = (rate) => 1 - Math.exp(-dt * rate);
-            const { phase, recovery } = this.state;
+            const { phase } = this.state;
 
             this.attitude.quaternion.slerp(this.target, ease(12));
             const turning = this.attitude.quaternion.angleTo(this.target) > SETTLED;
@@ -357,10 +346,9 @@
             }
 
             // Parachutes hang above the rocket in world space, whatever its attitude.
-            const airborne = phase === 'APOGEE' || phase === 'DESCENT';
             let top = NOSE_Y;
             for (const [key, chute] of Object.entries(this.chutes)) {
-                const out = airborne && recovery === key;
+                const out = phase === key;
                 if (!out) {
                     chute.inflation = 0;
                     chute.group.visible = false;
@@ -389,7 +377,7 @@
             // Frame the rocket, and the canopy when there is one.
             const bottom = this.flame.visible ? -2.1 : -1.4;
             // The rocket tilts, so leave it some width; the main canopy needs more.
-            const width = recovery === 'MAIN' && airborne ? CHUTES.MAIN.radius * 2.4 : 1.5;
+            const width = phase === 'MAIN' ? CHUTES.MAIN.radius * 2.4 : 1.5;
             const centre = (top + bottom) / 2;
             const height = top - bottom;
             const fov = (this.camera.fov * Math.PI) / 180;
@@ -413,7 +401,7 @@
             this.renderer.render(this.scene, this.camera);
 
             // The flame flickers and the canopies sway for as long as they show.
-            this.animating = turning || reframing || this.flame.visible || (airborne && recovery !== 'NONE');
+            this.animating = turning || reframing || this.flame.visible || phase in CHUTES;
 
             return this.animating;
         }
@@ -436,7 +424,7 @@
             this.openmct = openmct;
             this.generation = 0;
             this.unsubscribers = [];
-            this.latest = { orientation: null, phase: null, recovery: null };
+            this.latest = { orientation: null, phase: null };
             this.onBounds = this.onBounds.bind(this);
             this.load = this.load.bind(this);
         }
@@ -517,7 +505,7 @@
         // --- data ---------------------------------------------------------------------
 
         async subscribe() {
-            const keys = { orientation: 'T_ORIENTATION', phase: 'flight.phase', recovery: 'flight.recovery' };
+            const keys = { orientation: 'T_ORIENTATION', phase: 'flight.phase' };
             const objects = {};
             await Promise.all(Object.entries(keys).map(async ([name, key]) => {
                 objects[name] = await this.openmct.objects.get({ namespace: NAMESPACE, key });
@@ -560,7 +548,7 @@
                 if (generation !== this.generation) {
                     return;
                 }
-                this.latest = { orientation: null, phase: null, recovery: null };
+                this.latest = { orientation: null, phase: null };
                 results.forEach(([name, datum]) => datum && this.update(name, datum));
             } catch (error) {
                 console.warn('StarPi: could not load the rocket attitude', error);
@@ -584,13 +572,12 @@
 
         /** Push the latest values into the scene and the overlay. */
         apply() {
-            const { PHASES, RECOVERY } = window.StarPiFlight;
+            const { PHASES, PHASE_LABELS } = window.StarPiFlight;
             const orientation = this.latest.orientation;
-            const phase = this.latest.phase ? PHASES[this.latest.phase.value] : null;
-            const recovery = (this.latest.recovery ? RECOVERY[this.latest.recovery.value] : null) ?? 'NONE';
+            const phase = this.latest.phase ? PHASES[this.latest.phase.value] ?? null : null;
 
             const turned = orientation ? this.scene?.setAttitude(orientation.x, orientation.y, orientation.z) : false;
-            const staged = this.scene?.setFlight(phase, recovery);
+            const staged = this.scene?.setFlight(phase);
             if (turned || staged) {
                 this.requestFrame();
             }
@@ -600,10 +587,6 @@
             }
             this.refs.phase.textContent = phase ? PHASE_LABELS[phase] : 'No flight data';
             this.refs.phase.dataset.phase = phase ?? '';
-            const showRecovery = recovery !== 'NONE' && phase !== 'PAD';
-            this.refs.recovery.hidden = !showRecovery;
-            this.refs.recovery.textContent = RECOVERY_LABELS[recovery];
-            this.refs.recovery.dataset.recovery = recovery;
         }
 
         renderStale() {

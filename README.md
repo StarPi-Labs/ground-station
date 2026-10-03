@@ -132,7 +132,7 @@ display precision, so any standard view can combine them.
 
 | StarPi › Telemetry › | Contents |
 | --- | --- |
-| Flight (estimated) | Flight phase, parachutes out, mission time, altitude above ground, apogee, max speed/acceleration, distance and bearing from the pad, ground track |
+| Flight | Flight phase (reported by the rocket), mission time, altitude above ground, apogee, max speed/acceleration, distance and bearing from the pad, ground track |
 | Barometer | Altitude (MSL), vertical speed, pressure, temperature |
 | IMU | Acceleration, angular rate, orientation: each opens as X/Y/Z overlaid and expands to the single axes |
 | GPS | Latitude, longitude |
@@ -144,7 +144,7 @@ Values turn *stale* (Open MCT's hatched style) when their message type has not
 arrived for 5 s. The real-time window ends 5 s in the future, so fresh packets
 are never dropped by views that ignore data past the window's end.
 
-`starpi-plugin.js` is the telemetry plugin, `flight/` the flight estimates,
+`starpi-plugin.js` is the telemetry plugin, `flight/` the flight state,
 `dashboard/seed.js` the standard dashboard, `commands/` the command panel,
 `launch-control/` the custom dashboard, `rocket/` the 3D attitude view and
 `brand/` the team's look (see below).
@@ -188,9 +188,9 @@ There are two, to compare:
 
 **StarPi › Widgets › Rocket Attitude** (also on the standard dashboard and in
 Launch Control) is a 3D model of the rocket turned to its reported
-orientation, with cues for the estimated flight state: an exhaust flame during
-the burn, a small drogue from apogee and the main parachute once the descent
-slows. Drag to orbit, double-click to
+orientation, with cues for its reported flight state: an exhaust flame during
+the burn, then a small drogue and the main parachute as they deploy. Drag to
+orbit, double-click to
 reset. It takes the IMU's Z as the rocket's long axis and applies the X, Y, Z
 angles in that order (`EULER_ORDER` in `openmct/rocket/rocket-view.js`); one
 fin is blue so the roll shows. three.js comes from npm like Open MCT.
@@ -241,29 +241,26 @@ flight, *Fixed* replays any past window. The only custom piece in the standard
 dashboard is **Commands** (Open MCT has no commanding UI without YAMCS): each
 command needs a second click to confirm and is disabled while its link is down.
 
-### Flight estimates and calibration
+### Flight state and ground level
 
-The rocket reports no flight phase, ground level or pad position, so
-`openmct/flight/flight-state.js` estimates them from barometric altitude and
-speed, the accelerometer and GPS:
+The rocket reports its flight state (`T_ROCKET_STATE`: idle, boost, coast,
+drogue, main, touchdown), and the parachutes follow from it.
+`openmct/flight/flight-state.js` derives the rest from the reported state,
+barometric altitude and speed, the accelerometer and GPS:
 
-* **Ground level**: the median barometric altitude while on the pad.
-* **Flight phase**: launch when acceleration stays above 2 g for 200 ms (or
-  the vertical speed passes 15 m/s), burnout below 1.2 g, apogee when the
-  vertical speed turns negative, landed after 5 s still within 15 m of the
-  ground.
-* **Parachutes**: the drogue from apogee; the main once the fall, having been
-  faster than 12 m/s, stays slower than that for 1 s. A single-deploy flight
-  never falls that fast, so it shows as drogue only.
-* **Pad position**: the average GPS fix before launch.
+* **Launch time**: when the state first leaves idle. A page opened mid-flight
+  finds it in the last 10 minutes of history; before that, mission time stays
+  blank.
+* **Apogee**: the highest altitude before the drogue (or main) is reported.
+* **Ground level**: the median barometric altitude while idle on the pad.
+* **Pad position**: the average GPS fix while idle on the pad.
 
-The thresholds live in **My Items › StarPi Flight Dashboard › Flight
-settings**: change them with *Edit Properties*, and every flight view picks
-them up at once. A ground level set there replaces the pad median; Launch
-Control's *Set ground here* does the same for that view only.
+A ground level set in **My Items › StarPi Flight Dashboard › Flight
+settings** (*Edit Properties*) replaces the pad median for every flight view;
+Launch Control's *Set ground here* does the same for that view only.
 
 `make test` (`node --test openmct/flight/flight-state.test.js`) runs the
-estimation tests.
+flight-tracking tests.
 
 ### Backend
 
