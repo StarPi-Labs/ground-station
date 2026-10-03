@@ -51,8 +51,8 @@
                 { key: 'speed', name: 'Vertical speed', unit: 'm/s', from: 'y' }
             ]
         },
-        T_ACCELLERATION: { name: 'Acceleration', fields: vector('m/s²') },
-        T_GYRO: { name: 'Gyroscope', fields: vector('°/s') },
+        T_ACCELLERATION: { name: 'Acceleration', fields: vector('mg') },
+        T_GYRO: { name: 'Gyroscope', fields: vector('mdps') },
         T_ORIENTATION: { name: 'Orientation', fields: vector('°') },
         T_PRESSURE: {
             name: 'Pressure',
@@ -90,8 +90,8 @@
         'sys.log': { name: 'System log', message: 'T_SYSLOG', from: null, format: 'string' }
     };
     for (const [group, name, message, unit, precision] of [
-        ['accel', 'Acceleration', 'T_ACCELLERATION', 'm/s²', 2],
-        ['gyro', 'Angular rate', 'T_GYRO', '°/s', 1],
+        ['accel', 'Acceleration', 'T_ACCELLERATION', 'mg', 0],
+        ['gyro', 'Angular rate', 'T_GYRO', 'mdps', 0],
         ['orientation', 'Orientation', 'T_ORIENTATION', '°', 1]
     ]) {
         for (const axis of ['x', 'y', 'z']) {

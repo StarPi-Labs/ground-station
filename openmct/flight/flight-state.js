@@ -14,6 +14,8 @@
     }
 }(typeof self !== 'undefined' ? self : this, function () {
     const G = 9.80665;
+    // The rocket's accelerometer reports milli-g.
+    const MG_PER_G = 1000;
 
     const PHASES = ['PAD', 'BOOST', 'COAST', 'APOGEE', 'DESCENT', 'LANDED'];
     // Parachutes out, estimated from the descent rate (FlightTracker.recovery).
@@ -159,7 +161,7 @@
         /**
          * @param {object} sample  one of
          *   { t, kind: 'alt', altitude, speed }
-         *   { t, kind: 'accel', x, y, z }       m/s²
+         *   { t, kind: 'accel', x, y, z }       mg
          *   { t, kind: 'gps', lat, lon }
          */
         update(sample) {
@@ -205,7 +207,7 @@
         }
 
         onAccel({ t, x, y, z }) {
-            const g = magnitude({ x, y, z }) / G;
+            const g = magnitude({ x, y, z }) / MG_PER_G;
             this.accelG = g;
 
             if (this.onGround()) {
@@ -379,6 +381,7 @@
 
     return {
         G,
+        MG_PER_G,
         PHASES,
         RECOVERY,
         DEFAULTS,

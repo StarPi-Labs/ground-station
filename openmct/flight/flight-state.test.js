@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { FlightTracker, distanceBearing, G } = require('./flight-state.js');
+const { FlightTracker, distanceBearing, G, MG_PER_G } = require('./flight-state.js');
 
 // A flight like the backend simulator's: 20 s on the pad, 2.2 s burn at 4 g,
 // coast to ~285 m, 8 m/s under the parachute, then on the ground.
@@ -11,6 +11,9 @@ const V0 = (BURN - G) * BURN_S;
 const H0 = 0.5 * (BURN - G) * BURN_S ** 2;
 const APOGEE_T = 20 + BURN_S + V0 / G;
 const APOGEE = H0 + V0 ** 2 / (2 * G);
+
+// The accelerometer reports milli-g.
+const mg = (a) => (a / G) * MG_PER_G;
 
 function ideal(t) {
     if (t < 20) return { h: 0, v: 0, a: G };
@@ -42,7 +45,7 @@ function fly({ rate = 5, noise = 0, until = 90, gap = null } = {}) {
         if (gap && t >= gap[0] && t < gap[1]) continue;
         const s = ideal(t);
         const ms = t * 1000;
-        tracker.update({ t: ms, kind: 'accel', x: 0, y: 0, z: s.a + noise * 1.2 * random() });
+        tracker.update({ t: ms, kind: 'accel', x: 0, y: 0, z: mg(s.a + noise * 1.2 * random()) });
         tracker.update({ t: ms, kind: 'alt', altitude: PAD_ALT + s.h + noise * random(), speed: s.v + noise * random() });
     }
     return tracker.snapshot();
@@ -85,7 +88,7 @@ test('pad noise alone never triggers a launch', () => {
     const tracker = new FlightTracker();
     const random = rng(7);
     for (let t = 0; t < 60000; t += 200) {
-        tracker.update({ t, kind: 'accel', x: random(), y: random(), z: G + 3 * random() });
+        tracker.update({ t, kind: 'accel', x: mg(random()), y: mg(random()), z: mg(G + 3 * random()) });
         tracker.update({ t, kind: 'alt', altitude: PAD_ALT + random(), speed: 2 * random() });
     }
     assert.equal(tracker.snapshot().phase, 'PAD');
@@ -116,7 +119,7 @@ test('a second flight after landing resets the records', () => {
         for (let t = 0; t < 90; t += 0.2) {
             const s = ideal(t);
             const ms = (offset + t) * 1000;
-            tracker.update({ t: ms, kind: 'accel', x: 0, y: 0, z: s.a });
+            tracker.update({ t: ms, kind: 'accel', x: 0, y: 0, z: mg(s.a) });
             tracker.update({ t: ms, kind: 'alt', altitude: PAD_ALT + s.h, speed: s.v });
         }
     }
@@ -140,7 +143,7 @@ test('the cached pad median follows every sample, through a landing and relaunch
         const t = (i % (90 * 5)) / 5; // two flights back to back
         const s = ideal(t);
         const ms = i * 200;
-        tracker.update({ t: ms, kind: 'accel', x: 0, y: 0, z: s.a });
+        tracker.update({ t: ms, kind: 'accel', x: 0, y: 0, z: mg(s.a) });
         tracker.update({ t: ms, kind: 'alt', altitude: PAD_ALT + s.h + 2 * random(), speed: s.v });
         const expected = tracker.frozenGround ?? (tracker.groundSamples.length ? median(tracker.groundSamples) : null);
         assert.equal(tracker.ground, expected, `at sample ${i}, phase ${tracker.phase}`);

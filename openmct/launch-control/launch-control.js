@@ -233,7 +233,7 @@
                     <div><dt>Gyro Y</dt><dd class="lc-num" data-ref="gyro-y">—</dd></div>
                     <div><dt>Gyro Z</dt><dd class="lc-num" data-ref="gyro-z">—</dd></div>
                 </dl>
-                <p class="lc-hint">Gyro in °/s. Axes as reported by the flight computer.</p>
+                <p class="lc-hint">Gyro in mdps (milli-degrees per second). Axes as reported by the flight computer.</p>
                 <h3 class="lc-title">Environment</h3>
                 <dl class="lc-pairs">
                     <div><dt>Pressure</dt><dd><span class="lc-num" data-ref="pressure">—</span> <span class="lc-unit">hPa</span></dd></div>
@@ -495,7 +495,7 @@
                 break;
             case 'accel': {
                 this.tracker.update({ t, kind: 'accel', x: datum.x, y: datum.y, z: datum.z });
-                const g = window.StarPiFlight.magnitude(datum) / window.StarPiFlight.G;
+                const g = window.StarPiFlight.magnitude(datum) / window.StarPiFlight.MG_PER_G;
                 this.series.accel.push({ t, v: g });
                 this.chartsDirty = true;
                 break;
@@ -674,7 +674,7 @@
                 const angle = latest.orient?.[axis];
                 refs[`orient-${axis}`].textContent = fixed(angle, 1);
                 refs[`orient-${axis}-needle`].setAttribute('transform', `rotate(${Number.isFinite(angle) ? angle : 0})`);
-                refs[`gyro-${axis}`].textContent = fixed(latest.gyro?.[axis], 1);
+                refs[`gyro-${axis}`].textContent = fixed(latest.gyro?.[axis], 0);
             }
             refs.pressure.textContent = fixed(latest.pressure?.value, 2);
             refs.temp.textContent = fixed(latest.temp?.value, 1);
