@@ -5,7 +5,7 @@ over Bluetooth LE, stores them in SQLite, pushes every new packet to connected
 websocket clients, and forwards commands back to the rocket.
 
 ```
-rocket ──BLE──> link ──> decode (Proto.hpp) ──> SQLite ──> GET /api/packets
+rocket ──BLE──> link ──> decode (logger.h) ──> SQLite ──> GET /api/packets
                                        └──> websocket /ws
 browser ──POST /api/commands──> link ──BLE──> rocket
 ```
@@ -54,7 +54,8 @@ flight phase shows up in the frontend. It sends 350 pkt/s by default, above
 the real rocket's ~300, for headroom; `SP_SIM_RATE` sets another rate (`make
 run-sim SP_SIM_RATE=500`). The rate is shared in a fixed mix: the IMU vectors
 at 25% each, altitude and pressure at 10%, temperature and GPS at 2.5% (at
-400 pkt/s: 100, 40 and 10 Hz; `RATES_HZ` in `links/sim.py`).
+400 pkt/s: 100, 40 and 10 Hz; `RATES_HZ` in `links/sim.py`). On top of that
+it reports `T_ROCKET_STATE` on every state change and once a second.
 
 To run without Docker:
 
@@ -133,6 +134,8 @@ curl 'http://localhost:8000/api/packets?type=T_ALT_SPEED&limit=5'
 
 Payloads are typed by `payload_type`: scalars come through as JSON numbers,
 booleans and strings as themselves, `P_FVEC2`/`P_FVEC3` as `{"x":…,"y":…[,"z":…]}`,
+`P_ROCKET_STATE` (one byte, the `T_ROCKET_STATE` flight state) as the state's name
+(`"RS_IDLE"` … `"RS_TOUCHDOWN"`, listed under `rocket_states` in `/api/enums`),
 and `P_NONE` as `null`.
 
 ### Commands
@@ -188,13 +191,13 @@ packets, but history queries that reach its damaged pages fail with a 500.
 
 ## Protocol
 
-`src/protocol.py` implements the frame described in `spec/Proto.hpp`:
+`src/protocol.py` implements the frame described in `spec/logger.h`:
 
 ```
 | timestamp (8 B) | flags (2 B) | payload (0..N B) |   little-endian
 ```
 
-`flags` packs enum *indices* — 4 bits payload type, 3 bits source, 3 bits
+`flags` packs enum *indices* — 4 bits payload type, 3 bits source, 4 bits
 message type, from the least significant bit — matching the
 `ceil(log2(n)) <= *_ENCODED_BITS` constraint in the header. The enum constants
 themselves stay `1 << index` bit flags, which is what makes the mask-based
@@ -204,13 +207,13 @@ query filters work.
 
 ```
 spec/           firmware headers this backend mirrors
-  Proto.hpp       telemetry frame format
+  logger.h        telemetry frame format
   Ble.hpp         BLE services, characteristics, device name
 src/
   main.py       entrypoint (uvicorn)
   api.py        REST routes + websocket
   station.py    ingest pipeline, command dispatch
-  protocol.py   Proto.hpp frame codec
+  protocol.py   logger.h frame codec
   db.py         SQLite store
   hub.py        websocket fan-out
   config.py     environment configuration

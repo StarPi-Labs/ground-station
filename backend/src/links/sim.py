@@ -21,7 +21,7 @@ from typing import Any
 
 from config import config
 from links.base import BadCommand, CommandSpec, Link, PacketHandler, UnknownCommand
-from protocol import LogMessage, MessagePayloadType, MessageType, SourceSubsystem
+from protocol import LogMessage, MessagePayloadType, MessageType, RocketState, SourceSubsystem
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ MAIN_ALTITUDE = 450.0  # the main opens below this height, m
 DEPLOY_S = 2.0  # time for a parachute to settle the fall to its rate
 WIND_SPEED = 3.0  # horizontal drift while airborne, m/s
 STATUS_PERIOD_S = 5.0
+ROCKET_STATE_PERIOD_S = 1.0  # T_ROCKET_STATE: on every change, and this often
 
 # The mix of message types, as sample rates in Hz: the IMU at the flight
 # firmware's 100 Hz task rate, logging three vectors, and the barometer faster
@@ -156,6 +157,21 @@ def flight_state(t: float) -> FlightState:
     return FlightState("LANDED", 0.0, 0.0, G, 0.0, 0.0, 0.0, drift)
 
 
+def rocket_state(t: float) -> RocketState:
+    """The state the flight firmware would report ``t`` seconds into the cycle."""
+    if t < PAD_S:
+        return RocketState.RS_IDLE
+    if t < PAD_S + BURN_S:
+        return RocketState.RS_BOOST
+    if t < APOGEE_T:
+        return RocketState.RS_COAST
+    if t < _MAIN_T:
+        return RocketState.RS_DROGUE
+    if t < LANDING_T:
+        return RocketState.RS_MAIN
+    return RocketState.RS_TOUCHDOWN
+
+
 def _pressure_hpa(altitude_m: float) -> float:
     """International standard atmosphere, troposphere."""
     return 1013.25 * (1.0 - 2.25577e-5 * altitude_m) ** 5.25588
@@ -191,6 +207,8 @@ class SimLink(Link):
         self._next_due = {msg_type: self._t0 for msg_type in self._rates}
         self._phase: str | None = None
         self._next_status = 0.0
+        self._rocket_state: RocketState | None = None
+        self._next_rocket_state = 0.0
 
     async def start(self) -> None:
         self._connected = True
@@ -230,9 +248,9 @@ class SimLink(Link):
         samples.sort(key=lambda sample: sample[0])
 
         messages = [self._sample(msg_type, at) for at, msg_type in samples]
-        status = self._status(now)
-        if status is not None:
-            messages.append(status)
+        for extra in (self._status(now), self._state(now)):
+            if extra is not None:
+                messages.append(extra)
         return messages
 
     def _timestamp_us(self, at: float) -> int:
@@ -320,6 +338,22 @@ class SimLink(Link):
             self._next_status = t + STATUS_PERIOD_S
             return self._syslog(timestamp_us, f"{state.phase.lower()} alt {state.altitude:.1f} m")
         return None
+
+    def _state(self, now: float) -> LogMessage | None:
+        """T_ROCKET_STATE on every state change, and every ROCKET_STATE_PERIOD_S."""
+        t = (now - self._t0) % FLIGHT_CYCLE_S
+        state = rocket_state(t)
+        if state is self._rocket_state and t < self._next_rocket_state:
+            return None
+        self._rocket_state = state
+        self._next_rocket_state = t + ROCKET_STATE_PERIOD_S
+        return LogMessage(
+            self._timestamp_us(now),
+            MessagePayloadType.P_ROCKET_STATE,
+            SourceSubsystem.S_PARA,
+            MessageType.T_ROCKET_STATE,
+            state.name,
+        )
 
     @staticmethod
     def _syslog(timestamp_us: int, text: str) -> LogMessage:

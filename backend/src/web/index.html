@@ -184,6 +184,7 @@ const TYPES = {
   T_GPS:           { label: "GPS",           unit: "lat, lon",
                      fmt: v => v && typeof v === "object" ? `${v.x.toFixed(5)}, ${v.y.toFixed(5)}` : String(v) },
   T_SYSLOG:        { label: "Syslog",        unit: "",      fmt: v => String(v) },
+  T_ROCKET_STATE:  { label: "Rocket state",  unit: "",      fmt: v => String(v).replace(/^RS_/, "") },
 };
 
 const state = {
