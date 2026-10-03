@@ -26,6 +26,8 @@ from protocol import LogMessage, MessagePayloadType, MessageType, RocketState, S
 log = logging.getLogger(__name__)
 
 G = 9.81
+MG_PER_MS2 = 1000.0 / G  # the accelerometer reports milli-g
+MDPS_PER_DPS = 1000.0  # the gyroscope reports milli-degrees per second
 
 # One simulated flight, repeated forever: seconds from the start of the cycle.
 # Sized for the real rocket's target: apogee ~3000 m, dual-deploy recovery.
@@ -274,16 +276,22 @@ class SimLink(Link):
             return message(
                 SourceSubsystem.S_IMU,
                 MessagePayloadType.P_FVEC3,
-                {"x": jitter(0.4), "y": jitter(0.4), "z": state.accel + jitter(0.6)},
+                # In milli-g, as the rocket's accelerometer reports it.
+                {
+                    "x": jitter(0.4) * MG_PER_MS2,
+                    "y": jitter(0.4) * MG_PER_MS2,
+                    "z": (state.accel + jitter(0.6)) * MG_PER_MS2,
+                },
             )
         if msg_type is MessageType.T_GYRO:
             return message(
                 SourceSubsystem.S_IMU,
                 MessagePayloadType.P_FVEC3,
+                # In mdps, as the rocket's gyroscope reports it.
                 {
-                    "x": jitter(2.0) + state.sway * 8.0,
-                    "y": jitter(2.0),
-                    "z": state.spin + jitter(2.0),
+                    "x": (jitter(2.0) + state.sway * 8.0) * MDPS_PER_DPS,
+                    "y": jitter(2.0) * MDPS_PER_DPS,
+                    "z": (state.spin + jitter(2.0)) * MDPS_PER_DPS,
                 },
             )
         if msg_type is MessageType.T_ORIENTATION:
