@@ -13,7 +13,7 @@ settings and how the flight state is used.
 Top-level `Makefile` wraps `docker compose` (compose file is the source of truth):
 
 - `make up` — set up host Bluetooth, build, start, wait for backend healthcheck (UI at http://localhost:8040, no login). `make up SP_LINKS=ble,lora` adds the LoRa link.
-- `make sim` — same stack fed by the built-in telemetry simulator (`SP_LINKS=sim`, separate `simulator.db`). Use this for any work without a rocket.
+- `make sim` — same stack fed by the built-in telemetry simulator (`SP_LINKS=sim`, separate `simulator.db`). Use this for any work without a rocket. `make sim2` (`SP_LINKS=sim-ble,sim-lora`) flies the same flight over two simulated radios: full-rate BLE that drops out above `BLE_RANGE_M`, and LoRa through the real link's packet conversion.
 - `make down`, `make logs [S=backend]`, `make ps`, `make build`
 - `make test` — frontend flight-tracking tests: `node --test openmct/flight/flight-state.test.js`. Filter a single test with `node --test --test-name-pattern='<regex>' openmct/flight/flight-state.test.js`.
 - `make deploy PI=starpi@starpi.local` / `make bundle` / `make load` — cross-build arm64 images under QEMU for an offline Pi; then `make up BUILD=--no-build` on the Pi.

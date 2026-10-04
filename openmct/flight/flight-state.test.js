@@ -142,6 +142,15 @@ test('samples older than the last one are ignored', () => {
     assert.equal(tracker.snapshot().altitude, 100);
 });
 
+test('the simulated radios rank like the real ones', () => {
+    const { LinkSelector } = require('./flight-state.js');
+    const selector = new LinkSelector();
+    assert.equal(selector.accept('T_ALT_SPEED', 'sim-ble', 1000), true);
+    assert.equal(selector.accept('T_ALT_SPEED', 'sim-lora', 1010), false);
+    // sim-ble out of range: sim-lora takes the type over.
+    assert.equal(selector.accept('T_ALT_SPEED', 'sim-lora', 7000), true);
+});
+
 test('a position sampled before the newest altitude still counts', () => {
     // One LoRa packet: the GPS fix is older than the altitude sent with it.
     const tracker = new FlightTracker();

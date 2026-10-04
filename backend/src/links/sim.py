@@ -7,6 +7,11 @@ firmware uses, so everything downstream sees real wire bytes.
 The telemetry follows a complete flight, repeated every ``FLIGHT_CYCLE_S``
 seconds: pad, motor burn, coast, apogee (~3000 m), drogue and main parachute
 descent, landing.
+
+``SP_LINKS=sim-ble,sim-lora`` flies the same flight over two simulated radios,
+to exercise everything that deals with two links: ``sim-ble`` is the full-rate
+stream and drops out when the rocket is out of Bluetooth range, ``sim-lora``
+is what the LoRa link would make of the same flight, heard all the way.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ import asyncio
 import logging
 import math
 import random
+import struct
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -25,9 +31,11 @@ from links.base import (
     ROCKET_COMMANDS,
     CommandSpec,
     Link,
+    LinkError,
     PacketHandler,
     UnknownCommand,
 )
+from links.lora import LoRaLink
 from protocol import LogMessage, MessagePayloadType, MessageType, RocketState, SourceSubsystem
 
 log = logging.getLogger(__name__)
@@ -69,6 +77,13 @@ def scaled_rates(total: float) -> dict[MessageType, float]:
     """RATES_HZ scaled so the message types add up to ``total`` pkt/s."""
     factor = total / sum(RATES_HZ.values())
     return {msg_type: hz * factor for msg_type, hz in RATES_HZ.items()}
+
+# The two simulated radios (sim-ble, sim-lora).
+BLE_RANGE_M = 300.0  # above this height the rocket is out of Bluetooth range
+LORA_PACKET_HZ = 5.0  # LoRa data packets per second
+# How long before a packet's transmission each of its groups was sampled, ms.
+LORA_AGE_MS = {"imu": 10, "baro": 25, "gps": 80}
+LORA_FC_ID = 252  # the flight computer's id in the firmware's LoRa protocol
 
 TICK_S = 0.02  # how often due samples are sent, in a batch like BLE notifications
 MAX_BACKLOG_S = 1.0  # samples older than this are skipped, not replayed
@@ -192,6 +207,23 @@ def _offset(lat: float, lon: float, *, north_m: float, east_m: float) -> tuple[f
     dlon = east_m / (111_320.0 * math.cos(math.radians(lat)))
     return lat + dlat, lon + dlon
 
+_t0: float | None = None
+
+
+def _flight_start() -> float:
+    """Monotonic time the simulated rocket was switched on: one flight and one
+    rocket clock, whichever simulated links are listening to it."""
+    global _t0
+    if _t0 is None:
+        _t0 = time.monotonic()
+    return _t0
+
+
+def _float16(value: float) -> float:
+    """``value`` as it comes out of a LoRa packet's 16-bit float."""
+    return struct.unpack("<e", struct.pack("<e", value))[0]
+
+
 # The rocket's commands, all accepted and none acted on.
 COMMANDS = {
     name: CommandSpec(name, f"{spec.description} Simulator no-op.")
@@ -207,7 +239,7 @@ class SimLink(Link):
         super().__init__(on_packet)
         self._rates = scaled_rates(rate)
         self._task: asyncio.Task[None] | None = None
-        self._t0 = time.monotonic()
+        self._t0 = _flight_start()
         self._next_due = {msg_type: self._t0 for msg_type in self._rates}
         self._phase: str | None = None
         self._next_status = 0.0
@@ -231,9 +263,16 @@ class SimLink(Link):
 
     async def _run(self) -> None:
         while True:
-            for message in self._due(time.monotonic()):
-                await self._emit(message.to_bytes())
+            now = time.monotonic()
+            messages = self._due(now)
+            if self._heard(flight_state((now - self._t0) % FLIGHT_CYCLE_S)):
+                for message in messages:
+                    await self._emit(message.to_bytes())
             await asyncio.sleep(TICK_S)
+
+    def _heard(self, state: FlightState) -> bool:
+        """Whether the rocket is in range; what it sends meanwhile is lost."""
+        return True
 
     def _due(self, now: float) -> list[LogMessage]:
         """Every sample whose time has come, oldest first."""
@@ -395,3 +434,83 @@ class SimLink(Link):
 
         log.info("simulator received command %s", name)
         return bytes([COMMAND_IDS[name]])
+
+
+class SimBLELink(SimLink):
+    """The simulated flight over Bluetooth: everything, while the rocket is near."""
+
+    name = "sim-ble"
+
+    def _heard(self, state: FlightState) -> bool:
+        in_range = state.altitude <= BLE_RANGE_M
+        if in_range != self._connected:
+            log.info("simulated BLE %s", "back in range" if in_range else "out of range")
+        self._connected = in_range
+        self._last_error = None if in_range else "rocket out of Bluetooth range (simulated)"
+        return in_range
+
+    async def send_command(self, name: str, args: dict[str, Any]) -> bytes:
+        if name not in COMMANDS:
+            raise UnknownCommand(f"simulator link has no command {name!r}")
+        if not self._connected:
+            raise LinkError("rocket out of Bluetooth range (simulated)")
+        return await super().send_command(name, args)
+
+
+class SimLoRaLink(LoRaLink):
+    """The simulated flight over LoRa: the packets radio_app would report, put
+    through the real link's conversion, so only the radio is made up."""
+
+    name = "sim-lora"
+
+    def __init__(self, on_packet: PacketHandler) -> None:
+        super().__init__(on_packet)
+        self._t0 = _flight_start()
+        self._number = 0
+
+    async def _run(self) -> None:
+        self._radio_app = True
+        self._on_state({"state": "receive", "connected": True})
+        while True:
+            for frame in self._frames(self._packet(time.monotonic())):
+                await self._emit(frame.to_bytes())
+            await asyncio.sleep(1.0 / LORA_PACKET_HZ)
+
+    def _packet(self, now: float) -> dict[str, Any]:
+        """The data line radio_app would write for a packet sent at ``now``."""
+        t = (now - self._t0) % FLIGHT_CYCLE_S
+        state = flight_state(t)
+        altitude = PAD_ALTITUDE_M + state.altitude + random.uniform(-0.3, 0.3)
+        lat, lon = _offset(PAD_LAT, PAD_LON, north_m=state.drift_m * 0.3, east_m=state.drift_m)
+        self._number = (self._number + 1) % 256
+        return {
+            "type": "data",
+            "id": LORA_FC_ID,
+            "number": self._number,
+            "tx_time_ms": int((now - self._t0) * 1000),
+            "state": int(rocket_state(t)),
+            "imu": {
+                "altitude": _float16(altitude),
+                "vspeed": _float16(state.speed),
+                "attitude": _float16(state.sway * 25.0),
+                "dt_ms": -LORA_AGE_MS["imu"],
+            },
+            "baro": {
+                "p1": _float16(_pressure_hpa(altitude)),
+                "p2": _float16(_pressure_hpa(altitude) + 0.3),
+                "dt_ms": -LORA_AGE_MS["baro"],
+            },
+            "gps": {"latitude": lat, "longitude": lon, "dt_ms": -LORA_AGE_MS["gps"]},
+        }
+
+    def status(self) -> dict[str, Any]:
+        status = super().status()
+        status.update({"simulated": True, "telemetry_socket": None, "command_socket": None})
+        return status
+
+    async def send_command(self, name: str, args: dict[str, Any]) -> bytes:
+        if name not in ROCKET_COMMANDS:
+            raise UnknownCommand(f"simulator link has no command {name!r}")
+        line = self._encode_command(name, args)
+        log.info("simulator received command %s over LoRa", name)
+        return line

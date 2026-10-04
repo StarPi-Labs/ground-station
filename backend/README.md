@@ -62,6 +62,20 @@ it reports `T_ROCKET_STATE` on every state change and once a second. Its
 timestamps count from the moment it started, like a rocket whose clock GPS
 has not set.
 
+`SP_LINKS=sim-ble,sim-lora` (`make sim2` at the top level) flies that same
+flight over two simulated radios instead, on one rocket clock:
+
+* `sim-ble` is the full stream above, but the rocket goes out of Bluetooth
+  range above 300 m (`BLE_RANGE_M`): the link reports disconnected and its
+  packets are lost until the rocket comes back down under the main parachute.
+* `sim-lora` is heard for the whole flight. It builds the data line `radio_app`
+  would report 5 times a second (16-bit floats, groups sampled a little before
+  the transmission) and puts it through the real LoRa link's conversion, so it
+  carries only altitude and speed, the two pressures, position and state.
+
+Both accept the rocket's commands and do nothing; `sim-ble` refuses them while
+out of range.
+
 To run without Docker:
 
 ```sh
@@ -77,7 +91,7 @@ All settings come from environment variables.
 | --- | --- | --- |
 | `SP_HOST` / `SP_PORT` | `0.0.0.0` / `8000` | HTTP bind address |
 | `SP_DB_PATH` | `data/starpi.db` | Names the SQLite files (`/data/starpi.db` in Docker): each start creates a new one, `data/starpi-0001-20261003-142501.db` (run number, UTC start time) |
-| `SP_LINKS` | `ble` | Comma-separated links to start: `ble`, `lora`, `sim` |
+| `SP_LINKS` | `ble` | Comma-separated links to start: `ble`, `lora`, `sim`, `sim-ble`, `sim-lora` |
 | `SP_BLE_DEVICE_NAME` | `John StarPi's Rocket` | Device name to scan for |
 | `SP_BLE_ADDRESS` | — | Connect to this MAC directly, skipping the name scan |
 | `SP_BLE_SCAN_TIMEOUT` | `10` | Scan timeout, seconds |

@@ -42,6 +42,7 @@
 
     // Links, best first, for the message types more than one of them carries:
     // BLE has every type at full rate, LoRa a few packets a second of some.
+    // The simulator's radios (sim-ble, sim-lora) rank like the real ones.
     const LINK_PREFERENCE = ['ble', 'lora'];
     // A link keeps a message type while that type keeps coming over it: for
     // three of its usual intervals, at least LINK_HOLD_MIN_MS (packets come in
@@ -76,7 +77,7 @@
         /** Whether `a` is preferred to `b`; links not in the list come last, by name. */
         better(a, b) {
             const rank = (link) => {
-                const index = this.preference.indexOf(link);
+                const index = this.preference.indexOf(link.replace(/^sim-/, ''));
 
                 return index < 0 ? this.preference.length : index;
             };

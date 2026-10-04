@@ -14,16 +14,19 @@ IMAGES := starpi/gs-backend:latest starpi/gs-apache:latest
 BUNDLE ?= starpi-images.tar.gz
 # up and sim rebuild by default; BUILD=--no-build runs the images already here.
 BUILD ?= --build
+# Links `make sim` starts; `make sim2` is sim-ble,sim-lora.
+SIM_LINKS ?= sim
 # Shared with the firmware's radio_app for the LoRa link: it creates its
 # sockets here (`radio_app $(abspath $(LORA_SOCKET_DIR))`), the backend reads them.
 LORA_SOCKET_DIR ?= ./run
 
 .DEFAULT_GOAL := help
-.PHONY: help up sim pi down restart build logs ps test setup-bl setup-lora hotspot lan tiles images bundle deploy load
+.PHONY: help up sim sim2 pi down restart build logs ps test setup-bl setup-lora hotspot lan tiles images bundle deploy load
 
 help:
 	@echo "make up       build and start the stack on the rocket link (BLE; SP_LINKS=ble,lora adds LoRa)"
 	@echo "make sim      same, fed by the telemetry simulator instead (SP_SIM_RATE=350 pkt/s)"
+	@echo "make sim2     the simulator as two radios: BLE that drops out in flight, and LoRa"
 	@echo "make down     stop and remove the containers (data in backend/data stays)"
 	@echo "make restart  restart the running containers"
 	@echo "make build    build the images only"
@@ -49,8 +52,12 @@ up: setup-bl setup-lora
 
 # The simulator gets its own database so it never mixes with flight data.
 sim: setup-lora
-	SP_LINKS=sim SP_DB_PATH=/data/simulator.db $(COMPOSE) up -d $(BUILD) --wait
+	SP_LINKS=$(SIM_LINKS) SP_DB_PATH=/data/simulator.db $(COMPOSE) up -d $(BUILD) --wait
 	@echo "Open MCT (simulator): http://localhost:$${FRONTEND_PORT:-8040}"
+
+# One simulated flight heard over two radios (links/sim.py).
+sim2:
+	$(MAKE) sim SIM_LINKS=sim-ble,sim-lora
 
 # On the Pi: the images come from `make deploy`/`make load` and are never built
 # there, and the dashboard answers on the default HTTP port (http://starpi.local).

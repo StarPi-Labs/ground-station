@@ -36,6 +36,7 @@ No rocket at hand? Run the same stack on the built-in simulator:
 ```sh
 make sim                  # 350 pkt/s, a little above the rocket's ~300
 make sim SP_SIM_RATE=500  # or any other rate
+make sim2                 # the same flight over two radios: BLE and LoRa
 ```
 
 `make down` stops the stack, `make logs` follows it (`S=backend` for one
