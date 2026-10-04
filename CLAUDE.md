@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 StarPi rocket ground station: a Python backend that receives telemetry from the
-rocket (BLE today, LoRa planned), stores it in SQLite and streams it, plus an
+rocket (BLE, and LoRa through the firmware's `radio_app`), stores it in SQLite and streams it, plus an
 Open MCT frontend served by Apache. Runs on a Raspberry Pi 4 via Docker Compose.
 README.md and backend/README.md are detailed and current — read them for API,
 settings and how the flight state is used.
@@ -12,7 +12,7 @@ settings and how the flight state is used.
 
 Top-level `Makefile` wraps `docker compose` (compose file is the source of truth):
 
-- `make up` — set up host Bluetooth, build, start, wait for backend healthcheck (UI at http://localhost:8040, no login)
+- `make up` — set up host Bluetooth, build, start, wait for backend healthcheck (UI at http://localhost:8040, no login). `make up SP_LINKS=ble,lora` adds the LoRa link.
 - `make sim` — same stack fed by the built-in telemetry simulator (`SP_LINKS=sim`, separate `simulator.db`). Use this for any work without a rocket.
 - `make down`, `make logs [S=backend]`, `make ps`, `make build`
 - `make test` — frontend flight-tracking tests: `node --test openmct/flight/flight-state.test.js`. Filter a single test with `node --test --test-name-pattern='<regex>' openmct/flight/flight-state.test.js`.
@@ -25,9 +25,9 @@ There are no backend tests and no linter configured.
 ## Architecture
 
 ```
-Rocket --BLE--> Link --> Station.on_frame --> protocol.decode --> SQLite (db.py)
-                                                              \--> Hub --> /ws websocket clients
-Browser --POST /api/commands--> Station --> Link --> rocket
+Rocket --BLE-------------------------------> Link --> Station.on_frame --> protocol.decode --> SQLite (db.py)
+Rocket --LoRa--> radio_app (host) --sockets--> Link --/                                         \--> Hub --> /ws websocket clients
+Browser --POST /api/commands--> Station --> Link --> rocket (BLE write, or a JSON line to radio_app)
 Apache :8040 serves openmct/ and proxies /api, /ws, /docs to backend:8000
 ```
 
@@ -36,6 +36,8 @@ Apache :8040 serves openmct/ and proxies /api, /ws, /docs to backend:8000
 - `station.py` owns everything: links, DB, hub, decode/store error counters, command dispatch.
 - `links/` is a transport abstraction (`base.Link`). Nothing above this layer may assume BLE; a link only moves bytes, decoding lives in `protocol.py`. New transports register via `links.create_link` and are enabled by name in `SP_LINKS`. `LinkError` subclasses (`UnknownCommand`, `UnknownLink`, `BadCommand`) map to 4xx; plain `LinkError` maps to 503 — catch subclasses first.
 - `protocol.py` mirrors the firmware header `spec/logger.h` (and `links/ble.py` mirrors `spec/Ble.hpp`). Frame: 8 B timestamp + 2 B flags + payload, little-endian. Flags pack enum **indices**, while the Python enum values are `1 << index` bit flags used for mask-based query filters — don't conflate the two. Changes to the wire format must start from the `spec/` headers.
+- `links/lora.py` does not drive the radio: the firmware's `radio_app` (`app/raspberry/` in the `mcu` repo, run on the Pi host) does, and the link talks to its two Unix sockets (JSON lines; contract in `radio_app`'s `telemetry_output.h` and `command_input.h`), found in `./run` mounted at `/run/starpi` (`LORA_SOCKET_DIR`, `SP_LORA_*`). It rebuilds `LogMessage` frames from each `LoRaDataPacket` (`T_ALT_SPEED`, `T_PRESSURE`, `T_GPS`, `T_ROCKET_STATE`, stamped with the rocket's `tx_time + dt`; mapping in its docstring and backend/README.md), emitting a group only when it changes or once a second. `connected` means the rocket is on the LoRa link, `radio_app` in its status that the program is running.
+- With BLE and LoRa both up the same quantity arrives on both, as separate packets told apart by `link`; nothing is merged or deduplicated across links. `Station` keeps `rocket_time` from stepping back for a slightly older packet from the slower link.
 - `links/sim.py` flies a full scripted flight every 250 s so every flight phase shows in the frontend, at `SP_SIM_RATE` pkt/s (350 by default, above the real rocket's ~300; the per-type mix is `RATES_HZ`). `make sim SP_SIM_RATE=500` changes it. Its timestamps count from link start (an MCU clock GPS has not set).
 - Timestamps are the rocket MCU's, which only knows the date once GPS sets it (maybe never): never compare them to the ground's wall clock. Each backend start writes a new DB file named after `SP_DB_PATH` (`db.run_path`, `starpi-0001-<utc>.db`) so runs never mix; `Station.run` names it (in `/api/health` and the ws `hello`), and `rocket_time` in `/api/health` is the MCU clock as last heard.
 - Ingest publishes before it stores: `Station.on_frame` decodes, assigns the packet id (continuing the table's AUTOINCREMENT sequence) and broadcasts; one writer task then stores the queued packets in a single transaction at most every `WRITE_INTERVAL_S` (`db.insert_packets`). The live stream must never wait on the Pi's SD card. `db.py` writes on one connection and reads on a pool of `READERS` connections; run PRAGMAs through `_pragma()`, since an unread result pins a read snapshot and stops the WAL from ever being rewound.

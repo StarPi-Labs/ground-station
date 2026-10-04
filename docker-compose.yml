@@ -11,10 +11,17 @@ services:
       SP_PAD_LAT: ${SP_PAD_LAT:-39.392547}
       SP_PAD_LON: ${SP_PAD_LON:--8.289517}
       SP_PAD_ALTITUDE_M: ${SP_PAD_ALTITUDE_M:-160}
+      # radio_app's sockets, in the directory mounted below.
+      SP_LORA_TLM_SOCKET: /run/starpi/starpi_tlm.sock
+      SP_LORA_CMD_SOCKET: /run/starpi/starpi_cmd.sock
     volumes:
       # BlueZ is reached over the host's D-Bus (run scripts/setup-bluetooth.sh first).
       - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
       - ./backend/data:/data
+      # LoRa: radio_app runs on the host and creates its sockets in this
+      # directory (`radio_app <dir>`). The directory is mounted, not the socket
+      # files: they are created anew every time radio_app starts.
+      - ${LORA_SOCKET_DIR:-./run}:/run/starpi
     ports:
       - '${BACKEND_PORT:-8000}:8000'
     healthcheck:

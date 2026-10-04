@@ -29,6 +29,11 @@ from protocol import LogMessage, ProtocolError
 
 log = logging.getLogger(__name__)
 
+#: With two links up the same moment of the flight arrives twice, later on the
+#: slower one (LoRa). A packet up to this much older than the newest heard does
+#: not set the rocket's clock back; an older one does: the rocket restarted.
+CLOCK_STEP_BACK_US = 5_000_000
+
 #: Minimum time between two packet batches, in seconds. Every commit rewrites
 #: whole pages of the table and its indexes, so committing as packets came
 #: in (~50 times a second) wrote ~3 MB/s to the SD card for ~45 kB/s of data.
@@ -159,7 +164,9 @@ class Station:
             )
             return
 
-        self._rocket_time = (message.timestamp_us, time.monotonic())
+        newest = self._rocket_time[0] if self._rocket_time is not None else 0
+        if not newest - CLOCK_STEP_BACK_US < message.timestamp_us < newest:
+            self._rocket_time = (message.timestamp_us, time.monotonic())
         record = message.to_dict()
         record.update({"id": self._next_id, "link": link_name, "received_at_us": now_us()})
         self._next_id += 1

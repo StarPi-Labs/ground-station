@@ -14,12 +14,15 @@ IMAGES := starpi/gs-backend:latest starpi/gs-apache:latest
 BUNDLE ?= starpi-images.tar.gz
 # up and sim rebuild by default; BUILD=--no-build runs the images already here.
 BUILD ?= --build
+# Shared with the firmware's radio_app for the LoRa link: it creates its
+# sockets here (`radio_app $(abspath $(LORA_SOCKET_DIR))`), the backend reads them.
+LORA_SOCKET_DIR ?= ./run
 
 .DEFAULT_GOAL := help
-.PHONY: help up sim pi down restart build logs ps test setup-bl hotspot lan tiles images bundle deploy load
+.PHONY: help up sim pi down restart build logs ps test setup-bl setup-lora hotspot lan tiles images bundle deploy load
 
 help:
-	@echo "make up       build and start the stack on the rocket link (BLE)"
+	@echo "make up       build and start the stack on the rocket link (BLE; SP_LINKS=ble,lora adds LoRa)"
 	@echo "make sim      same, fed by the telemetry simulator instead (SP_SIM_RATE=350 pkt/s)"
 	@echo "make down     stop and remove the containers (data in backend/data stays)"
 	@echo "make restart  restart the running containers"
@@ -40,12 +43,12 @@ help:
 
 # --wait returns once the backend's healthcheck passes, so a broken start
 # fails here instead of silently in the background.
-up: setup-bl
+up: setup-bl setup-lora
 	$(COMPOSE) up -d $(BUILD) --wait
 	@echo "Open MCT: http://localhost:$${FRONTEND_PORT:-8040}"
 
 # The simulator gets its own database so it never mixes with flight data.
-sim:
+sim: setup-lora
 	SP_LINKS=sim SP_DB_PATH=/data/simulator.db $(COMPOSE) up -d $(BUILD) --wait
 	@echo "Open MCT (simulator): http://localhost:$${FRONTEND_PORT:-8040}"
 
@@ -74,6 +77,11 @@ test:
 
 setup-bl:
 	$(MAKE) -C backend setup-bl
+
+# Created here, as this user: a directory Docker has to create for the mount
+# belongs to root, and radio_app could not put its sockets in it.
+setup-lora:
+	mkdir -p "$(LORA_SOCKET_DIR)"
 
 # Host setup, not a container: needs sudo and NetworkManager.
 hotspot:

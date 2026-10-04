@@ -18,8 +18,9 @@ The software stack involves the following components:
 
 ## Getting Started
 
-Prerequisites: Docker with Compose, Make, and BlueZ on the host for the rocket
-link.
+Prerequisites: Docker with Compose, Make, and BlueZ on the host for the
+Bluetooth rocket link. The LoRa link also needs the firmware's `radio_app`
+running on the Pi (see [LoRa link](#lora-link)).
 
 ```sh
 make up   # power on the Bluetooth controller, build, start, wait until healthy
@@ -51,7 +52,9 @@ Apache's status page (`/server-status`) answers only from inside its own
 container, since the site has no login; a browser gets `403`. Read it with
 `docker compose exec apache wget -qO- http://localhost/server-status?auto`.
 
-Compose settings, all optional: `SP_LINKS` (`ble`), `SP_DB_PATH`
+Compose settings, all optional: `SP_LINKS` (`ble`; `ble,lora` adds the LoRa
+link), `LORA_SOCKET_DIR` (`./run`, the directory shared with `radio_app`),
+`SP_DB_PATH`
 (`/data/starpi.db`, stored in `backend/data/`; every start writes a new file
 named after it, see below), `FRONTEND_PORT` (`8040`),
 `BACKEND_PORT` (`8000`). Put machine-specific values in a git-ignored `.env`
@@ -61,10 +64,43 @@ variables can go on the `make` command line: `make up FRONTEND_PORT=9000`.
 ```mermaid
 graph LR
     R[Rocket] -- BLE --> B[backend :8000]
+    R -- LoRa --> L[radio_app on the host]
+    L -- "Unix sockets in ./run" --> B
     B -- SQLite --> D[(backend/data)]
     A[apache :8040] -- "/api, /ws, /docs" --> B
     A -- serves --> O[Open MCT + StarPi plugin]
 ```
+
+### LoRa link
+
+The LoRa radio is driven by `radio_app`, a program from the firmware
+repository (`app/raspberry/` in `mcu`) that runs on the Pi itself, outside
+Docker. The backend's `lora` link talks to it over two Unix sockets in a
+directory both can see: `./run` here, mounted into the backend container.
+
+```sh
+# once: build radio_app (in the mcu repository, on the Pi)
+cmake -S app/raspberry -B app/raspberry/build && cmake --build app/raspberry/build
+
+make up SP_LINKS=ble,lora                              # creates ./run, starts the stack
+/path/to/mcu/app/raspberry/build/radio_app "$PWD/run"  # in another terminal, from this directory
+```
+
+The order does not matter and either side can be restarted alone: the backend
+retries every 2 s until `radio_app` is there. Put `SP_LINKS=ble,lora` in `.env`
+to keep it. Without an argument `radio_app` uses `/tmp`, which is where a
+backend run outside Docker looks for it; another directory goes in
+`LORA_SOCKET_DIR` (keep the path short: a socket path cannot exceed 107
+characters). `radio_app` has to run as a user allowed to write to that
+directory, so let `make up` create it rather than Docker, which would make it
+root's.
+
+`GET /api/health` tells the two states apart: the `lora` link is `connected`
+only while the rocket is on the LoRa link; `radio_app: true` with
+`connected: false` means the radio is running and waiting for the rocket.
+LoRa carries a summary of the telemetry (altitude and vertical speed, the two
+pressures, GPS position, flight state), stored like every other packet with
+`link: "lora"`; see [backend/README.md](backend/README.md#lora-link).
 
 ### Pi without internet
 

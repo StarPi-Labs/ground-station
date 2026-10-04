@@ -72,6 +72,19 @@ class Config:
         default_factory=lambda: float(_env_int("SP_BLE_RECONNECT_DELAY", 5))
     )
 
+    # --- LoRa ---
+    # Unix sockets of the firmware's radio_app, which drives the radio: JSON
+    # lines out (telemetry, protocol state) and in (commands).
+    lora_tlm_socket: str = field(
+        default_factory=lambda: _env_str("SP_LORA_TLM_SOCKET", "/tmp/starpi_tlm.sock")
+    )
+    lora_cmd_socket: str = field(
+        default_factory=lambda: _env_str("SP_LORA_CMD_SOCKET", "/tmp/starpi_cmd.sock")
+    )
+    lora_reconnect_delay: float = field(
+        default_factory=lambda: max(0.1, _env_float("SP_LORA_RECONNECT_DELAY", 2.0))
+    )
+
     # --- Simulator ---
     # Total packets per second the sim link sends (the real rocket: ~300).
     sim_rate: float = field(
