@@ -17,14 +17,30 @@ BUILD ?= --build
 # Links `make sim` starts; `make sim2` is sim-ble,sim-lora.
 SIM_LINKS ?= sim
 # Shared with the firmware's radio_app for the LoRa link: it creates its
-# sockets here (`radio_app $(abspath $(LORA_SOCKET_DIR))`), the backend reads them.
+# sockets here, the backend reads them.
 LORA_SOCKET_DIR ?= ./run
+# radio_app's source, in a checkout of the firmware repo (mcu): the radio
+# service is built from it. Without it the radio image is left out of
+# `make images`, and radio_app has to be run on the host.
+RADIO_APP_SRC ?= ../../mcu.git/logging/app/raspberry
+export RADIO_APP_SRC
+ifneq (,$(wildcard $(RADIO_APP_SRC)/CMakeLists.txt))
+IMAGES += starpi/gs-radio:latest
+IMAGE_PROFILES := lora
+endif
+# The radio service runs when the LoRa link is asked for (SP_LINKS=ble,lora).
+# `COMPOSE_PROFILES=` on the command line keeps it off, for radio_app on the host.
+comma := ,
+ifneq (,$(filter lora,$(subst $(comma), ,$(SP_LINKS))))
+COMPOSE_PROFILES ?= lora
+export COMPOSE_PROFILES
+endif
 
 .DEFAULT_GOAL := help
 .PHONY: help up sim sim2 pi down restart build logs ps test setup-bl setup-lora hotspot lan tiles images bundle deploy load
 
 help:
-	@echo "make up       build and start the stack on the rocket link (BLE; SP_LINKS=ble,lora adds LoRa)"
+	@echo "make up       build and start the stack on the rocket link (BLE; SP_LINKS=ble,lora adds LoRa and its radio service)"
 	@echo "make sim      same, fed by the telemetry simulator instead (SP_SIM_RATE=350 pkt/s)"
 	@echo "make sim2     the simulator as two radios: BLE that drops out in flight, and LoRa"
 	@echo "make down     stop and remove the containers (data in backend/data stays)"
@@ -65,7 +81,7 @@ pi:
 	$(MAKE) up BUILD=--no-build FRONTEND_PORT=80
 
 down:
-	$(COMPOSE) down
+	COMPOSE_PROFILES=lora $(COMPOSE) down
 
 restart:
 	$(COMPOSE) restart
@@ -123,7 +139,7 @@ images:
 	docker exec $(EMU_HOLD) test -f /ready && \
 	docker run --privileged --rm tonistiigi/binfmt --install $(EMU_ARCH) >/dev/null && \
 	echo "QEMU ready for $(PLATFORM)" && \
-	DOCKER_DEFAULT_PLATFORM=$(PLATFORM) $(COMPOSE) build
+	COMPOSE_PROFILES=$(IMAGE_PROFILES) DOCKER_DEFAULT_PLATFORM=$(PLATFORM) $(COMPOSE) build
 
 bundle: images
 	docker save $(IMAGES) | gzip > $(BUNDLE)

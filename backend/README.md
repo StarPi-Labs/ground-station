@@ -19,7 +19,8 @@ than by its `link` name.
 * Docker >= 29.*: for running the backend in a container.
 * BlueZ >= 5.55: for Bluetooth communication with the mcu.
 * The firmware's `radio_app` (`app/raspberry/` in the `mcu` repo) running on
-  the same machine: for the LoRa link only.
+  the same machine, for the LoRa link only: the top-level `radio` service, or
+  the program itself on the host.
 * Make: for building/running.
 
 ## Getting Started
