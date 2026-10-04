@@ -318,14 +318,20 @@ class SimLink(Link):
         if msg_type is MessageType.T_PRESSURE:
             return message(
                 SourceSubsystem.S_BARO,
-                MessagePayloadType.P_FLOAT,
-                _pressure_hpa(PAD_ALTITUDE_M + altitude) + jitter(0.05),
+                MessagePayloadType.P_FVEC2,  # the two barometers, like the firmware
+                {
+                    "x": _pressure_hpa(PAD_ALTITUDE_M + altitude) + jitter(0.05),
+                    "y": _pressure_hpa(PAD_ALTITUDE_M + altitude) + 0.3 + jitter(0.05),
+                },
             )
         if msg_type is MessageType.T_TEMPERATURE:
             return message(
                 SourceSubsystem.S_BARO,
-                MessagePayloadType.P_FLOAT,
-                21.5 - altitude * 0.0065 + jitter(0.1),
+                MessagePayloadType.P_FVEC2,
+                {
+                    "x": 21.5 - altitude * 0.0065 + jitter(0.1),
+                    "y": 21.9 - altitude * 0.0065 + jitter(0.1),
+                },
             )
         if msg_type is MessageType.T_GPS:
             lat, lon = _offset(

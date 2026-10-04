@@ -56,7 +56,8 @@
     // --- dictionary ------------------------------------------------------------
 
     // Every message type and how its payload maps onto fields. `from` is the
-    // payload key (x/y/z for vectors); scalar payloads use `from: null`.
+    // payload key (x/y/z for vectors); scalar payloads use `from: null`. The
+    // rocket has two barometers: pressure and temperature are (first, second).
     const MESSAGES = {
         T_ALT_SPEED: {
             name: 'Altitude / Speed',
@@ -70,11 +71,17 @@
         T_ORIENTATION: { name: 'Orientation', fields: vector('°') },
         T_PRESSURE: {
             name: 'Pressure',
-            fields: [{ key: 'value', name: 'Pressure', unit: 'hPa', from: null }]
+            fields: [
+                { key: 'value', name: 'Pressure 1', unit: 'hPa', from: 'x' },
+                { key: 'value2', name: 'Pressure 2', unit: 'hPa', from: 'y' }
+            ]
         },
         T_TEMPERATURE: {
             name: 'Temperature',
-            fields: [{ key: 'value', name: 'Temperature', unit: '°C', from: null }]
+            fields: [
+                { key: 'value', name: 'Temperature 1', unit: '°C', from: 'x' },
+                { key: 'value2', name: 'Temperature 2', unit: '°C', from: 'y' }
+            ]
         },
         T_GPS: {
             name: 'GPS',
@@ -101,8 +108,10 @@
     const POINTS = {
         'baro.altitude': { name: 'Altitude (MSL)', message: 'T_ALT_SPEED', from: 'x', unit: 'm', precision: 1 },
         'baro.speed': { name: 'Vertical speed', message: 'T_ALT_SPEED', from: 'y', unit: 'm/s', precision: 1 },
-        'baro.pressure': { name: 'Pressure', message: 'T_PRESSURE', from: null, unit: 'hPa', precision: 2 },
-        'baro.temperature': { name: 'Temperature', message: 'T_TEMPERATURE', from: null, unit: '°C', precision: 1 },
+        'baro.pressure': { name: 'Pressure (barometer 1)', message: 'T_PRESSURE', from: 'x', unit: 'hPa', precision: 2 },
+        'baro.pressure2': { name: 'Pressure (barometer 2)', message: 'T_PRESSURE', from: 'y', unit: 'hPa', precision: 2 },
+        'baro.temperature': { name: 'Temperature (barometer 1)', message: 'T_TEMPERATURE', from: 'x', unit: '°C', precision: 1 },
+        'baro.temperature2': { name: 'Temperature (barometer 2)', message: 'T_TEMPERATURE', from: 'y', unit: '°C', precision: 1 },
         'gps.lat': { name: 'Latitude', message: 'T_GPS', from: 'x', unit: '°', precision: 6 },
         'gps.lon': { name: 'Longitude', message: 'T_GPS', from: 'y', unit: '°', precision: 6 },
         'sys.log': { name: 'System log', message: 'T_SYSLOG', from: null, format: 'string' }
@@ -156,7 +165,7 @@
         root: { name: 'StarPi', children: ['launch-control', 'telemetry', 'widgets'] },
         telemetry: { name: 'Telemetry', children: ['baro', 'imu', 'gps', 'flight', 'station', 'sys.log'] },
         widgets: { name: 'Widgets', children: ['rocket', 'commands'] },
-        baro: { name: 'Barometer', children: ['baro.altitude', 'baro.speed', 'baro.pressure', 'baro.temperature'] },
+        baro: { name: 'Barometer', children: ['baro.altitude', 'baro.speed', 'baro.pressure', 'baro.pressure2', 'baro.temperature', 'baro.temperature2'] },
         imu: { name: 'IMU', children: ['imu.accel', 'imu.gyro', 'imu.orientation'] },
         'imu.accel': { name: 'Acceleration', plot: true, children: ['imu.accel.x', 'imu.accel.y', 'imu.accel.z'] },
         'imu.gyro': { name: 'Angular rate', plot: true, children: ['imu.gyro.x', 'imu.gyro.y', 'imu.gyro.z'] },
