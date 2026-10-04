@@ -28,6 +28,18 @@
     // would be up to 90 000 packets per load, for one number each.
     const LATEST_ONLY = new Set(['gyro', 'orient', 'pressure', 'temp']);
 
+    // Readouts by the source they show: marked stale when it stops arriving
+    // while others go on (the long-range link carries only some of them).
+    const READOUTS = {
+        alt: ['agl', 'speed'],
+        accel: ['accel', 'lateral'],
+        gyro: ['gyro-x', 'gyro-y', 'gyro-z'],
+        orient: ['orient-x', 'orient-y', 'orient-z'],
+        pressure: ['pressure'],
+        temp: ['temp'],
+        gps: ['gps-distance', 'gps-bearing', 'gps-lat', 'gps-lon']
+    };
+
     const STALE_WARN_MS = 2000;
     const STALE_ALARM_MS = 5000;
     const RENDER_MS = 200;
@@ -398,7 +410,6 @@
             this.logEntries = [];
             this.lastId = {};
             this.liveQueue = [];
-            this.receivedAt = [];
             this.lastReceived = null;
             this.chartsDirty = true;
             this.logDirty = true;
@@ -475,9 +486,7 @@
                 return;
             }
 
-            const now = Date.now();
-            this.lastReceived = now;
-            this.receivedAt.push(now);
+            this.lastReceived = Date.now();
             this.ingest(name, datum);
         }
 
@@ -549,6 +558,7 @@
             this.renderStatus(flight, realtime, now);
             this.renderReadouts(flight);
             this.renderSecondary(flight);
+            this.renderStale(realtime);
             if (this.logDirty) {
                 this.renderLog(flight);
             }
@@ -566,10 +576,6 @@
                 if (drop) {
                     series.splice(0, drop);
                 }
-            }
-            const cutoff = Date.now() - 5000;
-            while (this.receivedAt.length && this.receivedAt[0] < cutoff) {
-                this.receivedAt.shift();
             }
         }
 
@@ -606,13 +612,21 @@
             });
 
             // Backend health.
-            const { station } = window.StarPi;
+            const { station, stream } = window.StarPi;
             const health = station.health;
             const links = health?.links ?? [];
             const upLinks = links.filter((l) => l.connected).map((l) => l.name);
-            refs.links.textContent = !station.ok ? 'offline'
-                : upLinks.length ? `${upLinks.join(', ')} up` : 'down';
-            refs.links.className = !station.ok || !upLinks.length ? 'is-alarm' : 'is-ok';
+            // Each link with its own state: one of them down is expected in
+            // flight (a warning), none up is the alarm.
+            const linksHtml = !station.ok ? '<span class="is-alarm">offline</span>'
+                : !links.length ? '<span class="is-alarm">none</span>'
+                    : links.map((l) => `<span class="${l.connected ? 'is-ok' : upLinks.length ? 'is-warn' : 'is-alarm'}">${
+                        escapeHtml(l.name)} ${l.connected ? 'up' : 'down'}</span>`).join(' · ');
+            if (linksHtml !== this.linksHtml) {
+                this.linksHtml = linksHtml;
+                refs.links.innerHTML = linksHtml;
+            }
+            refs.links.title = links.map((l) => `${l.name}: ${l.connected ? 'up' : l.last_error || 'down'}`).join('; ');
 
             const errors = health
                 ? health.decode_errors + health.store_errors + health.dropped_events
@@ -630,7 +644,11 @@
                 const age = this.lastReceived === null ? null : Date.now() - this.lastReceived;
                 refs.age.textContent = age === null ? 'waiting' : `${(age / 1000).toFixed(1)} s ago`;
                 refs.age.className = `lc-num${age === null || age > STALE_ALARM_MS ? ' is-alarm' : age > STALE_WARN_MS ? ' is-warn' : ''}`;
-                refs.rate.textContent = `${(this.receivedAt.length / 5).toFixed(0)} pkt/s`;
+                // What each link delivers, shown or not: with two links up
+                // the readouts come from one, and this is the proof of the other.
+                refs.rate.textContent = links.length > 1
+                    ? `${links.map((l) => `${l.name} ${stream.packetRate(l.name).toFixed(0)}`).join(' · ')} pkt/s`
+                    : `${stream.packetRate().toFixed(0)} pkt/s`;
 
                 if (!station.ok) {
                     alert = 'Backend unreachable — readouts are frozen.';
@@ -701,6 +719,19 @@
                 const onMap = this.basemap.mode !== 'off';
                 const range = window.StarPiCharts.drawRange(refs.range, { ...flight, onMap }, window.StarPiFlight.localOffset);
                 this.basemap.view(range && flight.pad, range && 1 / range.scale);
+            }
+        }
+
+        /** Mark the readouts whose source stopped arriving: their last value is not the rocket's now. */
+        renderStale(realtime) {
+            const { stream } = window.StarPi;
+            for (const [name, refs] of Object.entries(READOUTS)) {
+                const stale = realtime && stream.isStale(SOURCES[name]);
+                for (const ref of refs) {
+                    const node = this.refs[ref];
+                    // Nothing to mark on a readout that never had a value.
+                    node.classList.toggle('is-stale', stale && node.textContent !== '—');
+                }
             }
         }
 

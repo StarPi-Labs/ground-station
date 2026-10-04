@@ -336,8 +336,19 @@
     margin-top: 4px;
 }
 
-.starpi-lc.is-stale .lc-primary .lc-num {
+.starpi-lc.is-stale .lc-primary .lc-num,
+.starpi-lc .lc-num.is-stale {
     color: var(--lc-ink-3);
+}
+
+/* One source gone quiet while the rest goes on: its last value, labelled. */
+.starpi-lc .lc-num.is-stale::after {
+    content: "stale";
+    margin-left: 0.5em;
+    color: var(--lc-warn);
+    font: 600 11px/1 var(--lc-font);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 
 .lc-records {
