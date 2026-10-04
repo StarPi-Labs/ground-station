@@ -12,6 +12,10 @@
     --sr-ok: oklch(0.72 0.14 150);
     --sr-warn: oklch(0.85 0.15 80);
     --sr-mono: var(--sp-mono);
+    --sr-axis-x: var(--sp-axis-x);
+    --sr-axis-y: var(--sp-axis-y);
+    --sr-axis-z: var(--sp-axis-z);
+    --sr-halo: var(--sp-bg);
 
     container-type: inline-size;
     position: relative;
@@ -38,6 +42,40 @@
     display: block;
     width: 100%;
     height: 100%;
+}
+
+/* Axis letters: the scene moves each one over the end of its axis. */
+.starpi-rocket .sr-axes {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.starpi-rocket .sr-axis {
+    position: absolute;
+    top: 0;
+    left: 0;
+    translate: -50% -50%;
+    font-family: var(--sr-mono);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    /* Keeps the letter readable where it crosses the model or the grid. */
+    text-shadow: 0 0 2px var(--sr-halo), 0 0 2px var(--sr-halo), 0 0 4px var(--sr-halo);
+    will-change: transform;
+}
+
+.starpi-rocket .sr-axis[data-axis="x"] {
+    color: var(--sr-axis-x);
+}
+
+.starpi-rocket .sr-axis[data-axis="y"] {
+    color: var(--sr-axis-y);
+}
+
+.starpi-rocket .sr-axis[data-axis="z"] {
+    color: var(--sr-axis-z);
 }
 
 .starpi-rocket .sr-overlay {

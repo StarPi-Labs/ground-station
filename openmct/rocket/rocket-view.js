@@ -48,6 +48,22 @@
     const BODY_TOP_Y = 0.55;
     const RADIUS = 0.075;
     const ATTACH_Y = 0.25; // where the shock cord leaves the body
+
+    // Two sets of axes, in the IMU's frame (Z along the rocket). The body axes
+    // turn with the rocket: X and Y leave its middle, Z its nose. The reference
+    // axes are the same frame at rest, drawn as a triad in the bottom left
+    // corner that follows the camera only. Colours are brand tokens, so they
+    // are read when the scene is built and again when the theme changes.
+    const AXES = ['x', 'y', 'z'];
+    const BODY_AXES = {
+        radius: 0.011,
+        spans: { x: [RADIUS, 0.45], y: [RADIUS, 0.45], z: [NOSE_Y + 0.02, NOSE_Y + 0.2] }
+    };
+    const AXES_TOP = NOSE_Y + 0.25; // room above the nose for the Z axis
+    // The triad is one unit long, scaled to `arm` pixels; `left` and `bottom`
+    // place its origin, clear of the hint.
+    const REFERENCE_AXES = { radius: 0.04, spans: { x: [0, 1], y: [0, 1], z: [0, 1] } };
+    const REFERENCE = { arm: 26, left: 46, bottom: 70, depth: 1 };
     // Keyed by the flight phase the parachute is out in.
     const CHUTES = {
         DROGUE: { radius: 0.4, height: 2, colors: COLORS.drogue, lines: 1.1 },
@@ -63,6 +79,19 @@
         });
 
         return threePromise;
+    }
+
+    let swatch = null;
+
+    /** A brand token as a three.js colour: the browser resolves it (oklch included) on a 1 px canvas. */
+    function brandColor(THREE, token) {
+        swatch ??= Object.assign(document.createElement('canvas'), { width: 1, height: 1 })
+            .getContext('2d', { willReadFrequently: true });
+        swatch.fillStyle = window.StarPiBrand.color(token);
+        swatch.fillRect(0, 0, 1, 1);
+        const [r, g, b] = swatch.getImageData(0, 0, 1, 1).data;
+
+        return new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
     }
 
     function fixed(value, digits) {
@@ -83,7 +112,7 @@
                     <div><dt>Z</dt><dd data-ref="z">—</dd></div>
                 </dl>
             </div>
-            <p class="sr-hint">Axes as reported by the flight computer · drag to orbit, double-click to reset</p>
+            <p class="sr-hint">Body axes on the rocket, reference in the corner · drag to orbit, double-click to reset</p>
             <p class="sr-message" data-ref="message" hidden></p>
         </div>`;
 
@@ -133,6 +162,22 @@
                 MAIN: this.buildChute(CHUTES.MAIN)
             };
             Object.values(this.chutes).forEach((chute) => this.scene.add(chute.group));
+
+            // Letters are HTML over the canvas: sharp at any size, coloured by the stylesheet.
+            this.labels = [];
+            this.labelLayer = document.createElement('div');
+            this.labelLayer.className = 'sr-axes';
+            container.appendChild(this.labelLayer);
+            this.axisMaterials = {};
+            for (const axis of AXES) {
+                this.axisMaterials[axis] = new THREE.MeshBasicMaterial();
+            }
+            this.recolour();
+            this.attitude.add(this.buildAxes(BODY_AXES));
+            // A child of the camera, so it keeps its place on screen; frame() turns it back to the IMU frame.
+            this.reference = this.buildAxes(REFERENCE_AXES);
+            this.camera.add(this.reference);
+            this.scene.add(this.camera);
 
             this.state = { phase: null, hasAttitude: false };
             this.timer = new THREE.Timer();
@@ -268,6 +313,76 @@
             return { group, canopy, cord, confluence, inflation: 0 };
         }
 
+        /** An arrow and a letter for each axis, in the IMU's frame; spans are [from, tip] along the axis. */
+        buildAxes({ radius, spans }) {
+            const THREE = this.THREE;
+            const group = new THREE.Group();
+            const head = { radius: radius * 2.6, length: radius * 7 };
+            // Drawn along Y, then turned onto its axis.
+            const turn = { x: ['z', -Math.PI / 2], y: null, z: ['x', Math.PI / 2] };
+            for (const axis of AXES) {
+                const [from, tip] = spans[axis];
+                const neck = tip - head.length;
+                const arrow = new THREE.Group();
+                const shaft = new THREE.Mesh(
+                    new THREE.CylinderGeometry(radius, radius, neck - from, 8),
+                    this.axisMaterials[axis]
+                );
+                shaft.position.y = (from + neck) / 2;
+                const point = new THREE.Mesh(
+                    new THREE.ConeGeometry(head.radius, head.length, 12),
+                    this.axisMaterials[axis]
+                );
+                point.position.y = neck + head.length / 2;
+                const anchor = new THREE.Object3D();
+                anchor.position.y = tip + radius * 12;
+                arrow.add(shaft, point, anchor);
+                if (turn[axis]) {
+                    arrow.rotation[turn[axis][0]] = turn[axis][1];
+                }
+                group.add(arrow);
+
+                const element = document.createElement('span');
+                element.className = 'sr-axis';
+                element.dataset.axis = axis;
+                element.textContent = axis.toUpperCase();
+                this.labelLayer.appendChild(element);
+                this.labels.push({ anchor, element });
+            }
+
+            return group;
+        }
+
+        /** Read the axis colours from the brand; again after a theme change. */
+        recolour() {
+            for (const axis of AXES) {
+                this.axisMaterials[axis].color.copy(brandColor(this.THREE, `axis-${axis}`));
+            }
+        }
+
+        /** Keep the reference triad the same size, in pixels, in the bottom left corner. */
+        placeReference() {
+            const half = Math.tan((this.camera.fov * Math.PI) / 360) * REFERENCE.depth;
+            const pixel = (2 * half) / this.height;
+            this.reference.position.set(
+                -half * this.camera.aspect + REFERENCE.left * pixel,
+                -half + REFERENCE.bottom * pixel,
+                -REFERENCE.depth
+            );
+            this.reference.scale.setScalar(REFERENCE.arm * pixel);
+        }
+
+        /** Put each letter over the end of its axis, as just drawn. */
+        placeLabels() {
+            const at = new this.THREE.Vector3();
+            for (const { anchor, element } of this.labels) {
+                at.setFromMatrixPosition(anchor.matrixWorld).project(this.camera);
+                const x = ((at.x + 1) / 2) * this.width;
+                const y = ((1 - at.y) / 2) * this.height;
+                element.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+            }
+        }
+
         /** Returns true when the model has to turn. */
         setAttitude(x, y, z) {
             if (![x, y, z].every(Number.isFinite)) {
@@ -315,6 +430,7 @@
                 this.renderer.setSize(width, height, false);
                 this.camera.aspect = width / height;
                 this.camera.updateProjectionMatrix();
+                this.placeReference();
             }
 
             return true;
@@ -346,7 +462,7 @@
             }
 
             // Parachutes hang above the rocket in world space, whatever its attitude.
-            let top = NOSE_Y;
+            let top = AXES_TOP;
             for (const [key, chute] of Object.entries(this.chutes)) {
                 const out = phase === key;
                 if (!out) {
@@ -397,8 +513,11 @@
                 distance * Math.cos(elevation) * Math.cos(azimuth)
             );
             this.camera.lookAt(0, this.view.centre, 0);
+            // Undo the camera's turn, so the triad shows the IMU frame at rest.
+            this.reference.quaternion.copy(this.camera.quaternion).invert().multiply(this.imuFrame.quaternion);
 
             this.renderer.render(this.scene, this.camera);
+            this.placeLabels();
 
             // The flame flickers and the canopies sway for as long as they show.
             this.animating = turning || reframing || this.flame.visible || phase in CHUTES;
@@ -414,6 +533,7 @@
             });
             this.renderer.dispose();
             this.renderer.domElement.remove();
+            this.labelLayer.remove();
         }
     }
 
@@ -439,6 +559,11 @@
             this.openmct.time.on('boundsChanged', this.onBounds);
             this.openmct.time.on('modeChanged', this.load);
             this.openmct.time.on('clockChanged', this.load);
+            // The scene copies the axis colours: read them again in the other theme.
+            this.unsubscribers.push(window.StarPiTheme.onChange(() => {
+                this.scene?.recolour();
+                this.requestFrame();
+            }));
 
             loadThree().then((THREE) => {
                 if (this.destroyed) {
