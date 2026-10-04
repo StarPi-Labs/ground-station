@@ -5,3 +5,4 @@ starpi-images.tar.gz
 openmct/tiles/*
 !openmct/tiles/README.md
 temp/
+run/

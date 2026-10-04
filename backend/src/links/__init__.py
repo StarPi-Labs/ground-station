@@ -1,6 +1,6 @@
 """Link registry.
 
-Adding a transport (LoRa, say) means writing a :class:`~links.base.Link`
+Adding a transport means writing a :class:`~links.base.Link`
 subclass and registering it here — nothing else in the backend changes.
 """
 
@@ -34,10 +34,16 @@ def _sim(on_packet: PacketHandler) -> Link:
     return SimLink(on_packet, rate=config.sim_rate)
 
 
+def _lora(on_packet: PacketHandler) -> Link:
+    from links.lora import LoRaLink
+
+    return LoRaLink(on_packet)
+
+
 REGISTRY: dict[str, LinkFactory] = {
     "ble": _ble,
+    "lora": _lora,
     "sim": _sim,
-    # "lora": _lora,  # future
 }
 
 

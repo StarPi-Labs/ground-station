@@ -1,22 +1,25 @@
 # Backend API
 
 A JSON REST + websocket API for the rocket's MCU. It ingests telemetry frames
-over Bluetooth LE, stores them in SQLite, pushes every new packet to connected
+over Bluetooth LE and LoRa, stores them in SQLite, pushes every new packet to connected
 websocket clients, and forwards commands back to the rocket.
 
 ```
-rocket ──BLE──> link ──> decode (logger.h) ──> SQLite ──> GET /api/packets
-                                       └──> websocket /ws
-browser ──POST /api/commands──> link ──BLE──> rocket
+rocket ──BLE──────────────────> link ──> decode (logger.h) ──> SQLite ──> GET /api/packets
+rocket ──LoRa──> radio_app ──> link ──┘                 └──> websocket /ws
+browser ──POST /api/commands──> link ──BLE or radio_app──> rocket
 ```
 
-The transport sits behind a `Link` interface (`src/links/`), so LoRa can be
-added later without touching the API, the decoder or the storage layer.
+Each transport sits behind a `Link` interface (`src/links/`): the API, the
+decoder and the storage layer do not know which one a packet came from, other
+than by its `link` name.
 
 ## Prerequisites
 
 * Docker >= 29.*: for running the backend in a container.
 * BlueZ >= 5.55: for Bluetooth communication with the mcu.
+* The firmware's `radio_app` (`app/raspberry/` in the `mcu` repo) running on
+  the same machine: for the LoRa link only.
 * Make: for building/running.
 
 ## Getting Started
@@ -74,11 +77,14 @@ All settings come from environment variables.
 | --- | --- | --- |
 | `SP_HOST` / `SP_PORT` | `0.0.0.0` / `8000` | HTTP bind address |
 | `SP_DB_PATH` | `data/starpi.db` | Names the SQLite files (`/data/starpi.db` in Docker): each start creates a new one, `data/starpi-0001-20261003-142501.db` (run number, UTC start time) |
-| `SP_LINKS` | `ble` | Comma-separated links to start: `ble`, `sim` |
+| `SP_LINKS` | `ble` | Comma-separated links to start: `ble`, `lora`, `sim` |
 | `SP_BLE_DEVICE_NAME` | `John StarPi's Rocket` | Device name to scan for |
 | `SP_BLE_ADDRESS` | — | Connect to this MAC directly, skipping the name scan |
 | `SP_BLE_SCAN_TIMEOUT` | `10` | Scan timeout, seconds |
 | `SP_BLE_RECONNECT_DELAY` | `5` | Delay between reconnect attempts, seconds |
+| `SP_LORA_TLM_SOCKET` | `/tmp/starpi_tlm.sock` | `radio_app`'s telemetry socket (`/run/starpi/starpi_tlm.sock` under Compose) |
+| `SP_LORA_CMD_SOCKET` | `/tmp/starpi_cmd.sock` | `radio_app`'s command socket (`/run/starpi/starpi_cmd.sock` under Compose) |
+| `SP_LORA_RECONNECT_DELAY` | `2` | Delay between attempts to reach `radio_app`, seconds |
 | `SP_SIM_RATE` | `350` | Packets per second sent by the `sim` link |
 | `SP_MAX_PAGE_SIZE` | `1000` | Upper bound on `limit` |
 | `SP_LIVE_BUFFER` | `200` | Packets kept for websocket backfill |
@@ -107,9 +113,12 @@ to `offset`: pass the previous page's last packet as `after_id` with its
 `timestamp_us` as `since_us` (`order=asc`) or `until_us` (`order=desc`). Each
 page then costs the same, where `offset` gets slower with every page.
 
-`link` selects the transport a packet arrived on (`ble`, `sim`, … — the names
-in `SP_LINKS`), which is how a flight over one radio is read back without the
-other's traffic: `?link=ble`. An unknown link name returns `400`.
+`link` selects the transport a packet arrived on (`ble`, `lora`, `sim`: the
+names in `SP_LINKS`), which is how a flight over one radio is read back
+without the other's traffic: `?link=ble`. An unknown link name returns `400`.
+With both radios up the same quantity is stored once per link it arrived on
+(nothing is merged), so a client that wants one series per quantity filters
+by `link`.
 
 ```sh
 curl 'http://localhost:8000/api/packets?type=T_ALT_SPEED&limit=5'
@@ -174,9 +183,18 @@ in the firmware's `lora.h`):
 
 The BLE link writes the id to the firmware's one writable characteristic and
 also offers `raw_write` (`{"characteristic": "<uuid>", "data": "<hex>"}`, API
-only). The simulator accepts the same commands and does nothing. LoRa commands
-do not go through this backend yet: the firmware's `radio_app` takes them on its
-own socket (`app/raspberry/test_command.sh` in the `mcu` repo).
+only). The simulator accepts the same commands and does nothing.
+
+The LoRa link hands the command to `radio_app` as the JSON line
+`{"command": <id>, "data": 0}` on its command socket; `bytes` in the response
+is that line. `radio_app` transmits it in the ground station's next window and
+the LoRa protocol has no acknowledgement yet, so `sent` means *handed to
+radio_app*, not received by the rocket. A command is refused with `503` while
+the rocket is not connected over LoRa, rather than left queued in `radio_app`
+to go out whenever it reconnects. The LoRa command packet also carries a
+64-bit argument that no command uses yet: `"args": {"data": <integer>}` sets
+it. `radio_app` forwards any id, but the rocket only acts on the ones its
+firmware knows.
 
 ### Live stream
 
@@ -214,6 +232,61 @@ the background (ingest does not wait for it). `storage` in `/api/health` reports
 a corrupt file is also logged as an error. A corrupt database still takes live
 packets, but history queries that reach its damaged pages fail with a 500.
 
+## LoRa link
+
+The radio is driven by the firmware's `radio_app`, not by this backend.
+`links/lora.py` connects to its two Unix sockets and reconnects when it
+restarts; the line formats are documented in `radio_app`'s
+`telemetry_output.h` and `command_input.h`.
+
+In `/api/health` and `/api/links` the link reports:
+
+| Field | Meaning |
+| --- | --- |
+| `connected` | The rocket is on the LoRa link (`radio_app` completed the handshake and still hears it) |
+| `radio_app` | `radio_app` is running and its telemetry socket is open |
+| `radio_state` | Its protocol state: `disconnected`, `connecting`, `transmit`, `receive` (`null` without `radio_app`) |
+| `last_error` | Why `connected` is false: `radio_app` unreachable, or running without the rocket |
+| `packets`, `lost_packets` | LoRa data packets received, and missed (gaps in the rocket's sequence numbers) |
+| `bad_lines` | Lines from `radio_app` that could not be read |
+| `tilt_deg` | The rocket's tilt from vertical in the last packet (see below) |
+
+A LoRa data packet is one fixed summary of the rocket's latest values
+(`LoRaDataPacket` in the firmware's `lora.h`), sent many times a second. The
+link turns it back into the `LogMessage` frames the rocket logged, so storage,
+the API and the websocket see the same messages as over BLE:
+
+| LoRa field | Message | Source | Payload |
+| --- | --- | --- | --- |
+| `imu.altitude`, `imu.vspeed` | `T_ALT_SPEED` | `S_IMU` | `P_FVEC2`: x altitude (m), y vertical speed (m/s) |
+| `baro.p1`, `baro.p2` | `T_PRESSURE` | `S_BARO` | `P_FVEC2`: the two barometers (mbar) |
+| `gps.latitude`, `gps.longitude` | `T_GPS` | `S_GPS` | `P_FVEC2`: x latitude, y longitude (degrees) |
+| `state` | `T_ROCKET_STATE` | `S_PARA` | `P_ROCKET_STATE` |
+
+* Units are the firmware's, as over BLE. Altitude, speed and pressure travel
+  as 16-bit floats (11 significant bits): pressure in 0.5 mbar steps, altitude
+  in 1 m steps above 1024 m and 2 m above 2048 m.
+* Timestamps are the rocket's clock, never the ground's. Each group carries
+  `dt`, its age in ms relative to the packet's transmit time, so a frame is
+  stamped `tx_time + dt`; the flight state has no `dt` and is stamped
+  `tx_time`. The firmware re-bases `dt` at every transmission, so a value it
+  has not refreshed since the previous packet is stamped later than it was
+  sampled, by at most its sensor's period.
+* The rocket repeats its latest values in every packet. A group becomes a
+  frame when its values change, and otherwise once a second, so LoRa adds at
+  most a few frames per packet and a steady value still arrives often enough
+  not to turn stale.
+* `T_ALT_SPEED` is logged on the rocket by both the IMU and the barometer
+  task; the packet does not say which wrote last and keeps it in its `imu`
+  group, hence `S_IMU`.
+* Pressure and GPS groups that are all zeros (not measured yet, no fix) and
+  values that are not finite numbers are skipped.
+* Not converted, because no `LogMessage` means the same: `imu.attitude`, the
+  tilt from vertical in degrees (`T_ORIENTATION` is roll, pitch and yaw), only
+  shown as `tilt_deg` in the link status. Acceleration, angular rate,
+  orientation, temperature and the system log are not in the LoRa packet at
+  all.
+
 ## Protocol
 
 `src/protocol.py` implements the frame described in `spec/logger.h`:
@@ -245,6 +318,7 @@ src/
   links/
     base.py     transport interface
     ble.py      Bluetooth LE (Ble.hpp)
+    lora.py     LoRa, through the firmware's radio_app
     sim.py      telemetry simulator
   web/index.html  dashboard (served only with SP_SERVE_WEB=true)
 ```

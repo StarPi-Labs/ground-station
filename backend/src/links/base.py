@@ -1,8 +1,8 @@
 """Transport-agnostic link interface.
 
-A *link* is one physical path to the rocket. Today that is Bluetooth LE; LoRa
-is expected to join it, so nothing above this layer may assume BLE. A link
-only moves bytes: framing and decoding live in :mod:`protocol`.
+A *link* is one physical path to the rocket: Bluetooth LE or LoRa today, so
+nothing above this layer may assume either. A link only moves bytes: framing
+and decoding live in :mod:`protocol`.
 """
 
 from __future__ import annotations
@@ -106,7 +106,8 @@ class Link(abc.ABC):
         :class:`UnknownCommand` for a name outside :meth:`supported_commands`,
         :class:`BadCommand` for arguments it will not accept, and
         :class:`LinkError` when the command is valid but cannot be delivered.
-        Returning normally means the bytes really went out.
+        Returning normally means the bytes really went out (on LoRa: were
+        handed to the program that drives the radio).
         """
 
     @abc.abstractmethod
