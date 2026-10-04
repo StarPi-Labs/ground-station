@@ -265,6 +265,8 @@ In `/api/health` and `/api/links` the link reports:
 | `packets`, `lost_packets` | LoRa data packets received, and missed (gaps in the rocket's sequence numbers) |
 | `bad_lines` | Lines from `radio_app` that could not be read |
 | `tilt_deg` | The rocket's tilt from vertical in the last packet (see below) |
+| `rssi_dbm` | Signal strength of the last packet at the ground station, dBm (`null` until one arrives, or with a `radio_app` that does not report it) |
+| `median_bps` | `radio_app`'s median bit rate over the last packets |
 
 A LoRa data packet is one fixed summary of the rocket's latest values
 (`LoRaDataPacket` in the firmware's `lora.h`), sent many times a second. The

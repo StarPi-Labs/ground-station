@@ -100,6 +100,9 @@ class LoRaLink(Link):
         self._bad_lines = 0
         self._last_number: int | None = None
         self._tilt_deg: float | None = None
+        # How well radio_app hears the rocket, from its last packet.
+        self._rssi_dbm: float | None = None
+        self._median_bps: float | None = None
         # message type -> (values, timestamp_us) of the last frame emitted
         self._emitted: dict[MessageType, tuple[Any, int]] = {}
 
@@ -136,6 +139,8 @@ class LoRaLink(Link):
                 "lost_packets": self._lost,
                 "bad_lines": self._bad_lines,
                 "tilt_deg": self._tilt_deg,
+                "rssi_dbm": self._rssi_dbm,
+                "median_bps": self._median_bps,
             }
         )
         return status
@@ -217,6 +222,9 @@ class LoRaLink(Link):
         self._last_number = number
         self._packets += 1
         self._tilt_deg = packet["imu"]["attitude"]
+        # Later additions to radio_app's data line: absent from an older one.
+        self._rssi_dbm = packet.get("rssi_dbm")
+        self._median_bps = packet.get("median_bps")
 
         frames: list[LogMessage] = []
         for group, (keys, msg_type, src) in GROUPS.items():
@@ -276,6 +284,8 @@ class LoRaLink(Link):
         self._radio_state = None
         self._connected = False
         self._last_number = None
+        self._rssi_dbm = None
+        self._median_bps = None
 
     async def _sleep_before_retry(self) -> None:
         try:

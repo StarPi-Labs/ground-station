@@ -621,7 +621,9 @@
             const linksHtml = !station.ok ? '<span class="is-alarm">offline</span>'
                 : !links.length ? '<span class="is-alarm">none</span>'
                     : links.map((l) => `<span class="${l.connected ? 'is-ok' : upLinks.length ? 'is-warn' : 'is-alarm'}">${
-                        escapeHtml(l.name)} ${l.connected ? 'up' : 'down'}</span>`).join(' · ');
+                        escapeHtml(l.name)} ${l.connected ? 'up' : 'down'}${
+                        // Signal strength, for the links that report one (LoRa).
+                        l.connected && Number.isFinite(l.rssi_dbm) ? ` ${l.rssi_dbm.toFixed(0)} dBm` : ''}</span>`).join(' · ');
             if (linksHtml !== this.linksHtml) {
                 this.linksHtml = linksHtml;
                 refs.links.innerHTML = linksHtml;

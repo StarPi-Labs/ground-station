@@ -501,6 +501,14 @@ class SimLoRaLink(LoRaLink):
                 "dt_ms": -LORA_AGE_MS["baro"],
             },
             "gps": {"latitude": lat, "longitude": lon, "dt_ms": -LORA_AGE_MS["gps"]},
+            # Free-space loss with the distance to the rocket, and some fading.
+            "rssi_dbm": round(
+                -45.0
+                - 20.0 * math.log10(max(10.0, math.hypot(state.altitude, state.drift_m)) / 10.0)
+                + random.uniform(-2.0, 2.0),
+                1,
+            ),
+            "median_bps": 2100.0 + random.uniform(-150.0, 150.0),
         }
 
     def status(self) -> dict[str, Any]:
