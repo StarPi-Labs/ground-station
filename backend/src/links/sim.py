@@ -20,7 +20,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from config import config
-from links.base import BadCommand, CommandSpec, Link, PacketHandler, UnknownCommand
+from links.base import (
+    COMMAND_IDS,
+    ROCKET_COMMANDS,
+    CommandSpec,
+    Link,
+    PacketHandler,
+    UnknownCommand,
+)
 from protocol import LogMessage, MessagePayloadType, MessageType, RocketState, SourceSubsystem
 
 log = logging.getLogger(__name__)
@@ -185,12 +192,10 @@ def _offset(lat: float, lon: float, *, north_m: float, east_m: float) -> tuple[f
     dlon = east_m / (111_320.0 * math.cos(math.radians(lat)))
     return lat + dlat, lon + dlon
 
+# The rocket's commands, all accepted and none acted on.
 COMMANDS = {
-    "sensor_calibration": CommandSpec(
-        name="sensor_calibration",
-        description="Pretend to calibrate the sensors (simulator no-op).",
-        params={"value": "optional int 0-255, echoed back (default 1)"},
-    )
+    name: CommandSpec(name, f"{spec.description} Simulator no-op.")
+    for name, spec in ROCKET_COMMANDS.items()
 }
 
 
@@ -382,13 +387,5 @@ class SimLink(Link):
         if name not in COMMANDS:
             raise UnknownCommand(f"simulator link has no command {name!r}")
 
-        raw = args.get("value", 1)
-        try:
-            value = int(raw)
-        except (TypeError, ValueError):
-            raise BadCommand(f"'value' must be an integer, got {raw!r}") from None
-        if not 0 <= value <= 255:
-            raise BadCommand("'value' must be in 0..255")
-
-        log.info("simulator received command %s %s", name, args)
-        return bytes([value])
+        log.info("simulator received command %s", name)
+        return bytes([COMMAND_IDS[name]])

@@ -18,6 +18,8 @@ from bleak.exc import BleakError
 
 from config import config
 from links.base import (
+    COMMAND_IDS,
+    ROCKET_COMMANDS,
     BadCommand,
     CommandSpec,
     Link,
@@ -41,11 +43,7 @@ LOG_MESSAGE_BUFFER_SIZE = 256
 
 
 COMMANDS = {
-    "sensor_calibration": CommandSpec(
-        name="sensor_calibration",
-        description="Trigger the on-board sensor calibration routine.",
-        params={"value": "optional int 0-255 written to the characteristic (default 1)"},
-    ),
+    **ROCKET_COMMANDS,
     "raw_write": CommandSpec(
         name="raw_write",
         description="Escape hatch: write arbitrary bytes to a characteristic.",
@@ -224,15 +222,10 @@ class BLELink(Link):
 
     @staticmethod
     def _encode_command(name: str, args: dict[str, Any]) -> tuple[str, bytes]:
-        if name == "sensor_calibration":
-            value = args.get("value", 1)
-            try:
-                value = int(value)
-            except (TypeError, ValueError):
-                raise BadCommand(f"'value' must be an integer, got {value!r}") from None
-            if not 0 <= value <= 255:
-                raise BadCommand("'value' must be in 0..255")
-            return SENSOR_CALIBRATION_CHARACTERISTIC_UUID, bytes([value])
+        if name in COMMAND_IDS:
+            # The firmware has a single writable characteristic, named after
+            # the first command it carried; the byte written says which one.
+            return SENSOR_CALIBRATION_CHARACTERISTIC_UUID, bytes([COMMAND_IDS[name]])
 
         # raw_write
         characteristic = args.get("characteristic")

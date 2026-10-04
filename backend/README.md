@@ -152,15 +152,31 @@ and `P_NONE` as `null`.
 ```sh
 curl -X POST http://localhost:8000/api/commands \
   -H 'Content-Type: application/json' \
-  -d '{"name": "sensor_calibration", "args": {"value": 1}}'
+  -d '{"name": "cameras_on"}'
 ```
 
 `link` may be set to pick a transport explicitly; otherwise the first connected
 link that supports the command is used. A command that cannot be delivered
 returns `503` and is recorded with status `failed`.
 
-BLE commands: `sensor_calibration` (writes one byte to the calibration
-characteristic) and `raw_write` (`{"characteristic": "<uuid>", "data": "<hex>"}`).
+The rocket's commands take no arguments and are one byte on the wire, the same
+on every link (`COMMAND_IDS` in `links/base.py`, mirroring `enum LoRaCommand`
+in the firmware's `lora.h`):
+
+| Command | Id | Effect |
+| --- | --- | --- |
+| `eject_a` | `0x01` | Fire ejection charge A |
+| `eject_c` | `0x02` | Fire ejection charge C |
+| `cut_main` | `0x03` | Fire the main parachute cutter |
+| `cameras_on` | `0x04` | Turn the cameras on |
+| `cameras_off` | `0x05` | Turn the cameras off |
+| `sensor_calibration` | `0x06` | Calibrate the sensors |
+
+The BLE link writes the id to the firmware's one writable characteristic and
+also offers `raw_write` (`{"characteristic": "<uuid>", "data": "<hex>"}`, API
+only). The simulator accepts the same commands and does nothing. LoRa commands
+do not go through this backend yet: the firmware's `radio_app` takes them on its
+own socket (`app/raspberry/test_command.sh` in the `mcu` repo).
 
 ### Live stream
 
