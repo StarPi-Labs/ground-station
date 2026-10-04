@@ -12,7 +12,7 @@ settings and how the flight state is used.
 
 Top-level `Makefile` wraps `docker compose` (compose file is the source of truth):
 
-- `make up` — set up host Bluetooth, build, start, wait for backend healthcheck (UI at http://localhost:8040, login `testuser` / `NasaIsCool!`)
+- `make up` — set up host Bluetooth, build, start, wait for backend healthcheck (UI at http://localhost:8040, no login)
 - `make sim` — same stack fed by the built-in telemetry simulator (`SP_LINKS=sim`, separate `simulator.db`). Use this for any work without a rocket.
 - `make down`, `make logs [S=backend]`, `make ps`, `make build`
 - `make test` — frontend flight-tracking tests: `node --test openmct/flight/flight-state.test.js`. Filter a single test with `node --test --test-name-pattern='<regex>' openmct/flight/flight-state.test.js`.
@@ -28,7 +28,7 @@ There are no backend tests and no linter configured.
 Rocket --BLE--> Link --> Station.on_frame --> protocol.decode --> SQLite (db.py)
                                                               \--> Hub --> /ws websocket clients
 Browser --POST /api/commands--> Station --> Link --> rocket
-Apache :8040 (basic auth) serves openmct/ and proxies /api, /ws, /docs to backend:8000
+Apache :8040 serves openmct/ and proxies /api, /ws, /docs to backend:8000
 ```
 
 ### Backend (`backend/src/`, FastAPI + uvicorn, async)

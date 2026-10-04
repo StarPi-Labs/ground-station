@@ -10,7 +10,6 @@ RUN rm /usr/local/apache2/htdocs/index.html
 COPY httpd.conf /usr/local/apache2/conf/httpd.conf
 RUN mkdir -p /usr/local/apache2/conf/sites/
 COPY openmct.conf /usr/local/apache2/conf/sites/openmct.conf
-COPY .htpasswd /usr/local/apache2/conf/.htpasswd
 
 COPY --from=openmct /build/node_modules/openmct/dist /usr/local/apache2/htdocs/openmct/node_modules/openmct/dist
 COPY --from=openmct /build/node_modules/three/build /usr/local/apache2/htdocs/openmct/node_modules/three/build

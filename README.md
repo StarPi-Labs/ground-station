@@ -25,9 +25,8 @@ link.
 make up   # power on the Bluetooth controller, build, start, wait until healthy
 ```
 
-Then open <http://localhost:8040> and log in as `testuser` / `NasaIsCool!`
-(stored in `apache/.htpasswd`; replace it before flying). The **StarPi** folder
-in the tree holds one telemetry object per message type, ready to be plotted,
+Then open <http://localhost:8040>; there is no login. The **StarPi** folder in
+the tree holds one telemetry object per message type, ready to be plotted,
 tabled or dropped into a layout. The indicator in the top bar shows whether the
 backend is reachable and which rocket links are up.
 
@@ -45,8 +44,12 @@ plain `docker compose` commands keep working.
 
 | Service | What it does | URL |
 | --- | --- | --- |
-| `apache` | Serves Open MCT and proxies the backend under one login | <http://localhost:8040> |
+| `apache` | Serves Open MCT and proxies the backend on one port | <http://localhost:8040> |
 | `backend` | Decodes, stores and streams telemetry, sends commands | <http://localhost:8040/docs> (also `:8000` directly) |
+
+Apache's status page (`/server-status`) answers only from inside its own
+container, since the site has no login; a browser gets `403`. Read it with
+`docker compose exec apache wget -qO- http://localhost/server-status?auto`.
 
 Compose settings, all optional: `SP_LINKS` (`ble`), `SP_DB_PATH`
 (`/data/starpi.db`, stored in `backend/data/`; every start writes a new file
