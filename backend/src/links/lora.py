@@ -253,6 +253,8 @@ class LoRaLink(Link):
                     state,
                 )
             )
+        # In the rocket's time order, like everything else the backend stores.
+        frames.sort(key=lambda frame: frame.timestamp_us)
         return frames
 
     def _due(self, msg_type: MessageType, values: Any, timestamp_us: int) -> bool:

@@ -169,8 +169,10 @@
 
     /**
      * Feed samples in time order with `update()`; read the state with
-     * `snapshot()`. Samples older than the last one seen are ignored, so live
-     * data that overlaps a history request cannot rewind the state.
+     * `snapshot()`. Samples older than the last one of their kind are ignored,
+     * so live data that overlaps a history request cannot rewind the state.
+     * Kinds are not ordered against each other: one LoRa packet carries a
+     * position sampled before its altitude.
      */
     class FlightTracker {
         constructor(options = {}) {
@@ -182,6 +184,7 @@
         reset() {
             this.phase = null; // no T_ROCKET_STATE yet
             this.lastTime = -Infinity;
+            this.lastOfKind = {};
             this.clearGroundSamples();
             this.padFixes = [];
             this.padPosition = null;
@@ -251,10 +254,11 @@
          *   { t, kind: 'state', state }         T_ROCKET_STATE payload
          */
         update(sample) {
-            if (!(sample.t >= this.lastTime)) {
+            if (!(sample.t >= (this.lastOfKind[sample.kind] ?? -Infinity))) {
                 return false;
             }
-            this.lastTime = sample.t;
+            this.lastOfKind[sample.kind] = sample.t;
+            this.lastTime = Math.max(this.lastTime, sample.t);
 
             if (sample.kind === 'alt') {
                 this.onAltitude(sample);

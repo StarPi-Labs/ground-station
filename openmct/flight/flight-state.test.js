@@ -142,6 +142,16 @@ test('samples older than the last one are ignored', () => {
     assert.equal(tracker.snapshot().altitude, 100);
 });
 
+test('a position sampled before the newest altitude still counts', () => {
+    // One LoRa packet: the GPS fix is older than the altitude sent with it.
+    const tracker = new FlightTracker();
+    assert.equal(tracker.update({ t: 1000, kind: 'alt', altitude: 100, speed: 0 }), true);
+    assert.equal(tracker.update({ t: 200, kind: 'gps', lat: 44.5, lon: 11.3 }), true);
+    assert.equal(tracker.update({ t: 100, kind: 'gps', lat: 0, lon: 0 }), false);
+    assert.deepEqual(tracker.snapshot().fix, { t: 200, lat: 44.5, lon: 11.3 });
+    assert.equal(tracker.lastTime, 1000);
+});
+
 test('the cached pad median follows every sample, through a touchdown and relaunch', () => {
     const { median } = require('./flight-state.js');
     const tracker = new FlightTracker();
