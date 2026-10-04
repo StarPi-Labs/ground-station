@@ -9,7 +9,9 @@
  *
  * Everything comes from the backend through the same origin (Apache proxies
  * /api and /ws): history from GET /api/packets, live data from the websocket,
- * link health from GET /api/health.
+ * link health from GET /api/health. The backend can hear the rocket over
+ * several links at once (BLE, LoRa): where they carry the same message type,
+ * one link's packets are passed on (LinkSelector, flight/flight-state.js).
  *
  * Time is the rocket's: packets carry its clock, which GPS may never set, so
  * the Real-time conductor follows RocketClock instead of this machine's clock.
@@ -263,6 +265,23 @@
         return body;
     }
 
+    /**
+     * Stored packets of one message type, oldest first, without the copies a
+     * second link delivered: the live stream's choice, made again in the
+     * order the ground received them (they are stored by the rocket's time).
+     */
+    function selectLinks(packets) {
+        const selector = new window.StarPiFlight.LinkSelector();
+        const passed = new Set();
+        for (const packet of [...packets].sort((a, b) => a.received_at_us - b.received_at_us)) {
+            if (selector.accept(packet.type, packet.link, packet.received_at_us / 1000)) {
+                passed.add(packet.id);
+            }
+        }
+
+        return packets.filter((packet) => passed.has(packet.id));
+    }
+
     function micros(ms) {
         return String(Math.floor(ms * 1000));
     }
@@ -296,7 +315,7 @@
             params.set('after_id', String(last.id));
         }
 
-        return pages.flat().reverse();
+        return selectLinks(pages.flat().reverse());
     }
 
     async function fetchLatest(type, end) {
@@ -312,7 +331,9 @@
      * A plot's history (Open MCT's 'minmax' strategy, `size` points): per time
      * bucket, the packets with the lowest and highest `field`, computed by the
      * backend. A 15-minute window of a 100 Hz IMU axis is ~1000 points
-     * instead of 90 000, and its peaks still show.
+     * instead of 90 000, and its peaks still show. The backend reduces the
+     * packets of every link together, so a bucket's extreme can be the other
+     * link's copy; selecting among what is left only removes most of them.
      */
     async function fetchMinmax(type, field, start, end, size) {
         const params = new URLSearchParams({
@@ -322,7 +343,7 @@
             params.set('field', field);
         }
 
-        return (await api(`/packets/minmax?${params}`)).packets;
+        return selectLinks((await api(`/packets/minmax?${params}`)).packets);
     }
 
     // Several objects share a message type (Orientation X/Y/Z, a plot and a
@@ -483,8 +504,9 @@
     /**
      * One websocket shared by every subscription, reconnecting with backoff.
      * Replays are skipped (backfill=0): Open MCT asks for history separately.
-     * Also tracks when each message type last arrived, for staleness, and
-     * sets the rocket clock from every packet.
+     * Where two links carry a message type, only one link's packets go on
+     * (LinkSelector). Also tracks when each message type last arrived, for
+     * staleness, and sets the rocket clock from every packet passed on.
      */
     class LiveStream {
         constructor(url, clock) {
@@ -493,8 +515,9 @@
             this.run = null; // the backend's database file, from its hello
             this.listeners = new Map(); // message type -> Set<callback(packet)>
             this.statusListeners = new Set();
+            this.selector = new window.StarPiFlight.LinkSelector();
             this.lastSeen = new Map(); // message type -> receive time (ms)
-            this.received = []; // receive times over the last 5 s, for the packet rate
+            this.received = []; // { at, link } over the last 5 s, for the packet rate
             this.socket = null;
             this.retryDelay = 1000;
             this.retryTimer = null;
@@ -557,10 +580,13 @@
                 return;
             }
             const packet = event.data;
-            this.clock.update(packet.timestamp_us / 1000);
             const now = Date.now();
+            this.received.push({ at: now, link: packet.link });
+            if (!this.selector.accept(packet.type, packet.link, packet.received_at_us / 1000)) {
+                return;
+            }
+            this.clock.update(packet.timestamp_us / 1000);
             this.lastSeen.set(packet.type, now);
-            this.received.push(now);
             this.listeners.get(packet.type)?.forEach((callback) => callback(packet));
         }
 
@@ -577,13 +603,17 @@
             this.run = data.run;
         }
 
-        packetRate() {
+        /** Packets per second received over `link`, or over every link: all of them, passed on or not. */
+        packetRate(link) {
             const cutoff = Date.now() - 5000;
-            while (this.received.length && this.received[0] < cutoff) {
+            while (this.received.length && this.received[0].at < cutoff) {
                 this.received.shift();
             }
+            const count = link === undefined
+                ? this.received.length
+                : this.received.filter((entry) => entry.link === link).length;
 
-            return this.received.length / 5;
+            return count / 5;
         }
 
         isStale(type) {
@@ -744,6 +774,7 @@
         const render = () => {
             const links = station.health?.links ?? [];
             const up = links.filter((link) => link.connected);
+            const down = links.filter((link) => !link.connected);
             if (!station.ok || !stream.connected) {
                 indicator.statusClass('s-status-error');
                 indicator.text('Backend offline');
@@ -752,7 +783,9 @@
                 indicator.text('No rocket link');
             } else {
                 indicator.statusClass('s-status-on');
-                indicator.text(`Link up: ${up.map((link) => link.name).join(', ')}`);
+                // One link down is normal in flight (BLE drops out of range), so it is said, not alarmed.
+                indicator.text(`Link up: ${up.map((link) => link.name).join(', ')}`
+                    + (down.length ? ` (${down.map((link) => link.name).join(', ')} down)` : ''));
             }
             const detail = links
                 .map((link) => `${link.name}: ${link.connected ? 'up' : link.last_error || 'down'}`)

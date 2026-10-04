@@ -21,7 +21,9 @@
     // to find the pad's ground level and the launch of a flight in progress.
     const LOOKBACK_MS = 10 * 60 * 1000;
     const SOURCES = { alt: 'T_ALT_SPEED', accel: 'T_ACCELLERATION', gps: 'T_GPS', state: 'T_ROCKET_STATE' };
-    // What the flight objects go stale with, unless a point names its own source.
+    // What the flight objects go stale with, unless a point names its own
+    // source: the long-range link carries no acceleration, so what is derived
+    // from it stops in flight while the altitude goes on.
     const STALE_SOURCE = 'T_ALT_SPEED';
 
     function flightPoints() {
@@ -52,12 +54,20 @@
                 }
             },
             'flight.agl': { name: 'Altitude above ground', precision: 1, unit: 'm', on: ['alt'], value: (tracker) => tracker.agl },
-            'flight.accel': { name: 'Acceleration (total)', precision: 2, unit: 'g', on: ['accel'], value: (tracker) => tracker.accelG },
+            'flight.accel': {
+                name: 'Acceleration (total)',
+                precision: 2,
+                unit: 'g',
+                on: ['accel'],
+                stale: 'T_ACCELLERATION',
+                value: (tracker) => tracker.accelG
+            },
             'flight.lateral-accel': {
                 name: 'Acceleration (lateral)',
                 precision: 2,
                 unit: 'g',
                 on: ['accel'],
+                stale: 'T_ACCELLERATION',
                 value: (tracker) => tracker.lateralG
             },
             'flight.apogee': {
@@ -79,6 +89,7 @@
                 precision: 2,
                 unit: 'g',
                 on: ['accel'],
+                stale: 'T_ACCELLERATION',
                 value: (tracker) => (launched(tracker) ? tracker.maxAccelG : null)
             },
             'flight.ground': { name: 'Ground level (MSL)', precision: 1, unit: 'm', on: ['alt'], value: (tracker) => tracker.ground },
@@ -87,6 +98,7 @@
                 precision: 0,
                 unit: 'm',
                 on: ['gps'],
+                stale: 'T_GPS',
                 value: (tracker) => fromPad(tracker)?.distance
             },
             'flight.bearing': {
@@ -94,11 +106,13 @@
                 precision: 0,
                 unit: '°',
                 on: ['gps'],
+                stale: 'T_GPS',
                 value: (tracker) => fromPad(tracker)?.bearing
             },
             'flight.track': {
                 name: 'Ground track',
                 on: ['gps'],
+                stale: 'T_GPS',
                 // Two ranges, for a scatter plot of the path seen from above.
                 values: [
                     { key: 'east', name: 'East of pad', unit: 'm', format: 'float', formatString: '%0.1f', hints: { range: 1 } },
