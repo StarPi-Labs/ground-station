@@ -250,6 +250,14 @@
                 window.StarPi.stream.subscribe(type, (packet) => this.onPacket(kind, packet));
             }
             this.restart();
+            // The tracker only takes time going forward: start over when the
+            // rocket clock jumps (a restart of the rocket). While priming, the
+            // restart under way already waits for the clock.
+            window.StarPi.clock.onJump(() => {
+                if (!this.priming) {
+                    this.restart();
+                }
+            });
             this.openmct.types.addType(SETTINGS_TYPE, settingsType());
             this.openmct.objectViews.addProvider(settingsView(this.openmct));
             // watchSettings() runs once the dashboard seed has created the object.
@@ -263,7 +271,13 @@
             this.priming = true;
             this.replays.clear();
 
-            const now = Date.now();
+            // History up to the rocket's time now, once the backend has told it.
+            const { clock } = window.StarPi;
+            await clock.ready;
+            if (generation !== this.generation) {
+                return;
+            }
+            const now = clock.currentValue();
             let samples = [];
             try {
                 samples = await this.history(now - LOOKBACK_MS, now);
@@ -369,7 +383,7 @@
         }
 
         async request(key, options) {
-            const end = options.end ?? Date.now();
+            const end = options.end ?? this.openmct.time.now();
             const start = options.start ?? end - LOOKBACK_MS;
             const rows = (await this.replay(start, end))[key];
             if (options.strategy === 'latest') {

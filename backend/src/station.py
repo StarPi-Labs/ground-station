@@ -17,10 +17,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
+import time
 from typing import Any
 
 from config import Config, config as default_config
-from db import Database, now_us
+from db import Database, now_us, run_path
 from hub import Hub
 from links import Link, LinkError, UnknownCommand, UnknownLink, create_link
 from protocol import LogMessage, ProtocolError
@@ -37,7 +39,9 @@ WRITE_INTERVAL_S = 0.5
 class Station:
     def __init__(self, cfg: Config | None = None) -> None:
         self.config = cfg or default_config
-        self.db = Database(self.config.db_path)
+        # A new file every run (see run_path): the frontend tells runs apart by its name.
+        self.db = Database(run_path(self.config.db_path))
+        self.run = os.path.basename(self.db.path)
         self.hub = Hub(self.config.live_buffer_size)
         self.links: dict[str, Link] = {}
         #: Frames that arrived but could not be decoded.
@@ -54,6 +58,9 @@ class Station:
         self._pending: list[dict[str, Any]] = []
         self._pending_raw: list[bytes] = []
         self._next_id = 1
+        # The rocket's clock: the newest packet's timestamp, and when it came
+        # (time.monotonic()). The frontend's time reference.
+        self._rocket_time: tuple[int, float] | None = None
         self._pending_ready = asyncio.Event()
         self._writer: asyncio.Task[None] | None = None
         self._stopping = False
@@ -62,7 +69,7 @@ class Station:
 
     async def start(self) -> None:
         await self.db.connect()
-        log.info("storage ready at %s", self.config.db_path)
+        log.info("storage ready at %s", self.db.path)
         self._next_id = await self.db.next_packet_id()
         self._stopping = False
         self._writer = asyncio.create_task(self._write_loop(), name="packet-writer")
@@ -121,10 +128,17 @@ class Station:
         if problems:
             log.error(
                 "database %s is corrupt, history queries may fail: %s",
-                self.config.db_path, "; ".join(problems[:5]),
+                self.db.path, "; ".join(problems[:5]),
             )
         else:
-            log.info("database %s passed its integrity check", self.config.db_path)
+            log.info("database %s passed its integrity check", self.db.path)
+
+    def rocket_time(self) -> dict[str, int] | None:
+        """The rocket's clock as last heard, and how long ago: None before any packet."""
+        if self._rocket_time is None:
+            return None
+        timestamp_us, at = self._rocket_time
+        return {"timestamp_us": timestamp_us, "age_us": int((time.monotonic() - at) * 1_000_000)}
 
     def storage_status(self) -> dict[str, Any]:
         problems = self.storage_problems
@@ -145,6 +159,7 @@ class Station:
             )
             return
 
+        self._rocket_time = (message.timestamp_us, time.monotonic())
         record = message.to_dict()
         record.update({"id": self._next_id, "link": link_name, "received_at_us": now_us()})
         self._next_id += 1

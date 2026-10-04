@@ -203,9 +203,6 @@ class SimLink(Link):
         self._rates = scaled_rates(rate)
         self._task: asyncio.Task[None] | None = None
         self._t0 = time.monotonic()
-        # Wall clock at _t0: sample timestamps are placed on their own schedule,
-        # not on the moment a batch happens to be sent.
-        self._wall0_us = time.time_ns() // 1_000
         self._next_due = {msg_type: self._t0 for msg_type in self._rates}
         self._phase: str | None = None
         self._next_status = 0.0
@@ -256,7 +253,10 @@ class SimLink(Link):
         return messages
 
     def _timestamp_us(self, at: float) -> int:
-        return self._wall0_us + int((at - self._t0) * 1_000_000)
+        """Microseconds since the link started, like a flight computer whose
+        clock GPS has not set: the ground station must not rely on the date.
+        From the sample's own schedule, not the moment its batch is sent."""
+        return int((at - self._t0) * 1_000_000)
 
     def _sample(self, msg_type: MessageType, at: float) -> LogMessage:
         """One reading of ``msg_type`` taken at monotonic time ``at``."""

@@ -55,7 +55,9 @@ the real rocket's ~300, for headroom; `SP_SIM_RATE` sets another rate (`make
 run-sim SP_SIM_RATE=500`). The rate is shared in a fixed mix: the IMU vectors
 at 25% each, altitude and pressure at 10%, temperature and GPS at 2.5% (at
 400 pkt/s: 100, 40 and 10 Hz; `RATES_HZ` in `links/sim.py`). On top of that
-it reports `T_ROCKET_STATE` on every state change and once a second.
+it reports `T_ROCKET_STATE` on every state change and once a second. Its
+timestamps count from the moment it started, like a rocket whose clock GPS
+has not set.
 
 To run without Docker:
 
@@ -71,7 +73,7 @@ All settings come from environment variables.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `SP_HOST` / `SP_PORT` | `0.0.0.0` / `8000` | HTTP bind address |
-| `SP_DB_PATH` | `data/starpi.db` | SQLite file (`/data/starpi.db` in Docker) |
+| `SP_DB_PATH` | `data/starpi.db` | Names the SQLite files (`/data/starpi.db` in Docker): each start creates a new one, `data/starpi-0001-20261003-142501.db` (run number, UTC start time) |
 | `SP_LINKS` | `ble` | Comma-separated links to start: `ble`, `sim` |
 | `SP_BLE_DEVICE_NAME` | `John StarPi's Rocket` | Device name to scan for |
 | `SP_BLE_ADDRESS` | — | Connect to this MAC directly, skipping the name scan |
@@ -169,7 +171,7 @@ characteristic) and `raw_write` (`{"characteristic": "<uuid>", "data": "<hex>"}`
 ```
 
 The first message is
-`{"event": "hello", "data": {"links": …, "enums": …, "commands": …, "filter": …}}`,
+`{"event": "hello", "data": {"run": …, "links": …, "enums": …, "commands": …, "filter": …}}`,
 followed by a replay of the last `?backfill=N` packets (default 20). Other
 events: `command` when one is dispatched, `error` for an undecodable frame.
 Send `ping` to get a `pong`.
@@ -182,6 +184,13 @@ link name closes the socket with `1008` after an `error` event.
 
 `GET /api/health`, `GET /api/links`, and `GET /api/enums` (enum names, bit flags
 and wire indices, so clients need not hardcode the protocol).
+
+`run` (in `/api/health` and the websocket's `hello`) is the database file of
+this run: it changes every time the backend starts. `rocket_time` in
+`/api/health` is the rocket's clock as last heard, `{"timestamp_us", "age_us"}`
+(`null` before the first packet of the run); timestamps are the rocket's own
+and only become dates once GPS has set its clock, so clients should take
+"now" from it rather than from their own clock.
 
 At startup the backend runs SQLite's `PRAGMA quick_check` over the database in
 the background (ingest does not wait for it). `storage` in `/api/health` reports

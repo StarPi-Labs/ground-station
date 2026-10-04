@@ -45,6 +45,7 @@ class Config:
     port: int = field(default_factory=lambda: _env_int("SP_PORT", 8000))
 
     # --- Storage ---
+    # Names the run files: each start opens a new one next to it (db.run_path).
     db_path: str = field(default_factory=lambda: _env_str("SP_DB_PATH", "data/starpi.db"))
 
     # --- Link selection: which transports to bring up at startup ---

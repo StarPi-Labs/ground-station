@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import time
 from typing import Any, AsyncIterator, Sequence
 
@@ -57,6 +58,28 @@ READERS = 3
 
 def now_us() -> int:
     return time.time_ns() // 1_000
+
+
+def run_path(series: str) -> str:
+    """A new database file for this run, next to ``series`` and named after it.
+
+    ``data/starpi.db`` gives ``data/starpi-0003-20261003-142501.db``. Every run
+    starts on an empty file: packets carry the rocket's own timestamps, and its
+    clock restarts with the rocket unless GPS has set it, so two runs in one
+    file could overlap in time. The run number orders the files even when the
+    Pi's clock is wrong (it has no RTC); the date is for people.
+    """
+    directory, name = os.path.split(series)
+    stem, ext = os.path.splitext(name)
+    ext = ext or ".db"
+    pattern = re.compile(rf"{re.escape(stem)}-(\d+)-.*{re.escape(ext)}$")
+    try:
+        names = os.listdir(directory or ".")
+    except FileNotFoundError:
+        names = []
+    run = max((int(m.group(1)) for n in names if (m := pattern.match(n))), default=0) + 1
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    return os.path.join(directory, f"{stem}-{run:04d}-{stamp}{ext}")
 
 
 class Database:

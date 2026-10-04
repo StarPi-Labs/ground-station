@@ -531,7 +531,7 @@
             }
             const realtime = this.openmct.time.isRealTime();
             const bounds = this.openmct.time.getBounds();
-            const now = realtime ? Date.now() : bounds.end;
+            const now = realtime ? this.openmct.time.now() : bounds.end;
             const flight = this.tracker.snapshot();
 
             if (realtime) {
@@ -617,7 +617,8 @@
             let alert = null;
             let level = 'alarm';
             if (realtime) {
-                const age = this.lastReceived === null ? null : now - this.lastReceived;
+                // When it arrived here: this machine's clock, unlike `now` (the rocket's).
+                const age = this.lastReceived === null ? null : Date.now() - this.lastReceived;
                 refs.age.textContent = age === null ? 'waiting' : `${(age / 1000).toFixed(1)} s ago`;
                 refs.age.className = `lc-num${age === null || age > STALE_ALARM_MS ? ' is-alarm' : age > STALE_WARN_MS ? ' is-warn' : ''}`;
                 refs.rate.textContent = `${(this.receivedAt.length / 5).toFixed(0)} pkt/s`;

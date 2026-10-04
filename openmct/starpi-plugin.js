@@ -11,6 +11,9 @@
  * /api and /ws): history from GET /api/packets, live data from the websocket,
  * link health from GET /api/health.
  *
+ * Time is the rocket's: packets carry its clock, which GPS may never set, so
+ * the Real-time conductor follows RocketClock instead of this machine's clock.
+ *
  * Also exposes window.StarPi for the other StarPi scripts (flight telemetry,
  * Launch Control, dashboard seeding).
  */
@@ -38,6 +41,15 @@
     // ~300 pkt/s: one callback per packet had every plot re-sort and redraw
     // hundreds of times a second.
     const BATCH_MS = 50;
+    // The rocket clock runs on from its last packet for this long, then holds
+    // still until the rocket is heard again: past it the link is down, and
+    // the rocket may have restarted with its clock.
+    const CLOCK_HOLD_MS = 10000;
+    // A packet this far behind the running rocket clock means the rocket's
+    // clock went back (a restart): the clock jumps to it. Less is link delay.
+    // This far ahead is a jump too: the link came back, or GPS set the clock.
+    const CLOCK_RESYNC_MS = 2000;
+    const CLOCK_TICK_MS = 100;
 
     // --- dictionary ------------------------------------------------------------
 
@@ -372,16 +384,113 @@
         };
     }
 
+    // --- rocket clock --------------------------------------------------------------
+
+    /**
+     * Open MCT clock on the rocket's time: its newest timestamp, run on with
+     * this machine's monotonic clock between packets (at most CLOCK_HOLD_MS).
+     * The rocket's clock only shows the date once GPS has set it, so the local
+     * clock would put the Real-time window decades away from the data.
+     * Implements Open MCT's clock interface: on/off('tick'), currentValue().
+     */
+    class RocketClock {
+        constructor() {
+            this.key = 'starpi.rocket';
+            this.name = 'Rocket clock';
+            this.cssClass = 'icon-clock';
+            this.description = 'Follows the timestamps the rocket sends, whether or not GPS has set its clock.';
+            this.listeners = new Set();
+            this.jumpListeners = new Set();
+            this.reference = null; // { rocket: ms, local: performance.now() }
+            this.lastTick = undefined;
+            this.timer = null;
+            // Settles once the backend has said where the rocket's clock is (or that it has no packet yet).
+            this.ready = new Promise((resolve) => {
+                this.markReady = resolve;
+            });
+        }
+
+        on(event, callback) {
+            if (event === 'tick') {
+                this.listeners.add(callback);
+                this.timer ??= setInterval(() => this.tick(), CLOCK_TICK_MS);
+            }
+
+            return this;
+        }
+
+        off(event, callback) {
+            this.listeners.delete(callback);
+            if (!this.listeners.size) {
+                clearInterval(this.timer);
+                this.timer = null;
+            }
+
+            return this;
+        }
+
+        /**
+         * Called when the clock jumps rather than runs on: when first set, and
+         * on any CLOCK_RESYNC_MS discontinuity. Open MCT takes every tick for a
+         * small step, so it needs telling (see starpi-app.js).
+         */
+        onJump(callback) {
+            this.jumpListeners.add(callback);
+
+            return () => this.jumpListeners.delete(callback);
+        }
+
+        /** The rocket's time now, in ms; 0 before the rocket was ever heard. */
+        currentValue() {
+            return this.reference ? Math.floor(this.at(performance.now())) : 0;
+        }
+
+        at(local) {
+            return this.reference.rocket + Math.min(local - this.reference.local, CLOCK_HOLD_MS);
+        }
+
+        /**
+         * The rocket's clock read `rocketMs` `ageMs` ago. Moves the clock forward
+         * to it, or back when it is far behind (the rocket restarted); `null`
+         * when the backend has no packet yet.
+         */
+        update(rocketMs, ageMs = 0) {
+            if (Number.isFinite(rocketMs)) {
+                const local = performance.now() - ageMs;
+                const expected = this.reference ? this.at(local) : null;
+                const jump = expected === null || Math.abs(rocketMs - expected) > CLOCK_RESYNC_MS;
+                if (jump || rocketMs > expected) {
+                    this.reference = { rocket: rocketMs, local };
+                }
+                if (jump) {
+                    this.jumpListeners.forEach((callback) => callback());
+                }
+            }
+            this.markReady();
+        }
+
+        tick() {
+            const now = this.currentValue();
+            if (now !== this.lastTick) {
+                this.lastTick = now;
+                this.listeners.forEach((callback) => callback(now));
+            }
+        }
+    }
+
     // --- live stream -------------------------------------------------------------
 
     /**
      * One websocket shared by every subscription, reconnecting with backoff.
      * Replays are skipped (backfill=0): Open MCT asks for history separately.
-     * Also tracks when each message type last arrived, for staleness.
+     * Also tracks when each message type last arrived, for staleness, and
+     * sets the rocket clock from every packet.
      */
     class LiveStream {
-        constructor(url) {
+        constructor(url, clock) {
             this.url = url;
+            this.clock = clock;
+            this.run = null; // the backend's database file, from its hello
             this.listeners = new Map(); // message type -> Set<callback(packet)>
             this.statusListeners = new Set();
             this.lastSeen = new Map(); // message type -> receive time (ms)
@@ -439,14 +548,33 @@
         }
 
         handle(event) {
+            if (event.event === 'hello') {
+                this.hello(event.data);
+
+                return;
+            }
             if (event.event !== 'packet') {
                 return;
             }
             const packet = event.data;
+            this.clock.update(packet.timestamp_us / 1000);
             const now = Date.now();
             this.lastSeen.set(packet.type, now);
             this.received.push(now);
             this.listeners.get(packet.type)?.forEach((callback) => callback(packet));
+        }
+
+        /**
+         * A restarted backend writes a new database, and the rocket's clock
+         * may have restarted too: everything on screen belongs to the old run
+         * (times, packet ids, the flight), so start over.
+         */
+        hello(data) {
+            if (this.run !== null && data.run !== this.run) {
+                console.info(`StarPi: backend started a new run (${data.run}), reloading`);
+                location.reload();
+            }
+            this.run = data.run;
         }
 
         packetRate() {
@@ -506,8 +634,9 @@
 
     /** Polls /api/health and turns it into the station.* telemetry objects. */
     class Station {
-        constructor(stream) {
+        constructor(stream, clock) {
             this.stream = stream;
+            this.clock = clock;
             this.listeners = new Map(); // key -> Set<callback>
             this.statusListeners = new Set();
             this.health = null;
@@ -529,6 +658,8 @@
             try {
                 this.health = await api('/health', {}, HEALTH_TIMEOUT_MS);
                 this.ok = true;
+                const rocket = this.health.rocket_time;
+                this.clock.update(rocket ? rocket.timestamp_us / 1000 : null, rocket ? rocket.age_us / 1000 : 0);
             } catch (error) {
                 this.ok = false;
             } finally {
@@ -552,7 +683,7 @@
         }
 
         latest(key) {
-            return this.polled ? [{ utc: Date.now(), value: this.values()[key] }] : [];
+            return this.polled ? [{ utc: this.clock.currentValue(), value: this.values()[key] }] : [];
         }
 
         subscribe(key, callback) {
@@ -571,7 +702,8 @@
         }
 
         emit() {
-            const utc = Date.now();
+            // On the rocket's clock, so they share the conductor's window with the telemetry.
+            const utc = this.clock.currentValue();
             const values = this.values();
             for (const [key, callbacks] of this.listeners) {
                 callbacks.forEach((callback) => callback({ utc, value: values[key] }));
@@ -634,15 +766,17 @@
 
     // --- plugin ----------------------------------------------------------------------
 
-    const stream = new LiveStream(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?backfill=0`);
+    const clock = new RocketClock();
+    const stream = new LiveStream(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?backfill=0`, clock);
     const staleness = new StalenessWatcher(stream);
-    const station = new Station(stream);
+    const station = new Station(stream, clock);
 
     window.StarPi = {
         NAMESPACE,
         MESSAGES,
         POINTS,
         api,
+        clock,
         fetchPackets,
         fetchRange,
         stream,

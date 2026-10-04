@@ -91,6 +91,8 @@ def create_app(station: Station | None = None) -> FastAPI:
     async def health(st: Station = Depends(get_station)) -> dict[str, Any]:
         return {
             "status": "ok",
+            "run": st.run,
+            "rocket_time": st.rocket_time(),
             "links": st.link_status(),
             "websocket_clients": st.hub.subscriber_count,
             "dropped_events": st.hub.dropped_events,
@@ -289,6 +291,7 @@ def create_app(station: Station | None = None) -> FastAPI:
                 {
                     "event": "hello",
                     "data": {
+                        "run": st.run,
                         "links": st.link_status(),
                         "enums": describe_enums(),
                         "commands": st.available_commands(),

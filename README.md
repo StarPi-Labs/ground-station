@@ -49,7 +49,8 @@ plain `docker compose` commands keep working.
 | `backend` | Decodes, stores and streams telemetry, sends commands | <http://localhost:8040/docs> (also `:8000` directly) |
 
 Compose settings, all optional: `SP_LINKS` (`ble`), `SP_DB_PATH`
-(`/data/starpi.db`, stored in `backend/data/`), `FRONTEND_PORT` (`8040`),
+(`/data/starpi.db`, stored in `backend/data/`; every start writes a new file
+named after it, see below), `FRONTEND_PORT` (`8040`),
 `BACKEND_PORT` (`8000`). Put machine-specific values in a git-ignored `.env`
 (start from `.env.example`); Compose reads it automatically, and the same
 variables can go on the `make` command line: `make up FRONTEND_PORT=9000`.
@@ -143,6 +144,19 @@ History comes from `GET /api/packets`, live data from the `/ws` websocket.
 Values turn *stale* (Open MCT's hatched style) when their message type has not
 arrived for 5 s. The real-time window ends 5 s in the future, so fresh packets
 are never dropped by views that ignore data past the window's end.
+
+Time is the rocket's own. Its clock only knows the date once GPS has set it,
+which may never happen, so the *Real-time* conductor follows the **Rocket
+clock** rather than this computer's: the newest packet's timestamp, run on
+between packets for up to 10 s, then held until the rocket is heard again. It
+jumps back when the rocket's clock does (a restart). Until GPS sets it, times
+show as dates in January 1970: the hours are time since the rocket booted.
+
+So that two runs never mix their timestamps, the backend starts a new database
+file every time it starts: `SP_DB_PATH=/data/starpi.db` names the series,
+`starpi-0001-20261003-142501.db`, `starpi-0002-...` (run number, then the
+Pi's UTC time). The frontend reloads when it sees a backend from a new run.
+Older runs stay in `backend/data/`.
 
 `starpi-plugin.js` is the telemetry plugin, `flight/` the flight state,
 `dashboard/seed.js` the standard dashboard, `commands/` the command panel,

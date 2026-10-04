@@ -219,7 +219,8 @@ const clock = us => new Date(us / 1000).toLocaleTimeString([], { hour12: false }
 
 function renderTiles() {
   const container = document.getElementById("tiles");
-  const now = Date.now();
+  // The rocket's clock, not this machine's: GPS may never have set it.
+  const now = Math.max(...Object.values(state.latest).map(p => p.timestamp_us / 1000));
   container.innerHTML = "";
 
   for (const [type, spec] of Object.entries(TYPES)) {
