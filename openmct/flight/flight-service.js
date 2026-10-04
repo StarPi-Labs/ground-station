@@ -53,6 +53,13 @@
             },
             'flight.agl': { name: 'Altitude above ground', precision: 1, unit: 'm', on: ['alt'], value: (tracker) => tracker.agl },
             'flight.accel': { name: 'Acceleration (total)', precision: 2, unit: 'g', on: ['accel'], value: (tracker) => tracker.accelG },
+            'flight.lateral-accel': {
+                name: 'Acceleration (lateral)',
+                precision: 2,
+                unit: 'g',
+                on: ['accel'],
+                value: (tracker) => tracker.lateralG
+            },
             'flight.apogee': {
                 name: 'Apogee',
                 precision: 1,

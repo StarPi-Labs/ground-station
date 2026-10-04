@@ -183,7 +183,7 @@
 
         // --- plots, gauge, tables ----------------------------------------------
         const flightPlot = add('telemetry.plot.stacked', 'starpi-plot-flight', 'Flight profile', folder, {
-            composition: [sp('flight.agl'), sp('baro.speed'), sp('flight.accel')]
+            composition: [sp('flight.agl'), sp('baro.speed'), sp('flight.accel'), sp('flight.lateral-accel')]
         });
         const orientationPlot = add('telemetry.plot.overlay', 'starpi-plot-orientation', 'Orientation', folder, {
             composition: [sp('imu.orientation.x'), sp('imu.orientation.y'), sp('imu.orientation.z')]
@@ -265,8 +265,10 @@
         value('i-agl', 'flight.agl', 0, 12, 34, 9, '72');
         label('i-speed-label', 'Vertical speed (m/s)', 0, 22, 34);
         value('i-speed', 'baro.speed', 0, 25, 34, 5, '36');
-        label('i-accel-label', 'Acceleration, total (g)', 0, 31, 34);
-        value('i-accel', 'flight.accel', 0, 34, 34, 5, '36');
+        label('i-accel-label', 'Acceleration, total (g)', 0, 31, 17);
+        value('i-accel', 'flight.accel', 0, 34, 17, 5, '36');
+        label('i-lateral-label', 'Acceleration, lateral (g)', 17, 31, 17);
+        value('i-lateral', 'flight.lateral-accel', 17, 34, 17, 5, '36');
         object('i-records', records, 0, 40, 34, 10);
 
         // Centre: flight profile. Right: ground track and position.

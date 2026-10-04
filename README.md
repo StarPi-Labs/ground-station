@@ -133,7 +133,7 @@ display precision, so any standard view can combine them.
 
 | StarPi › Telemetry › | Contents |
 | --- | --- |
-| Flight | Flight phase (reported by the rocket), mission time, altitude above ground, apogee, max speed/acceleration, distance and bearing from the pad, ground track |
+| Flight | Flight phase (reported by the rocket), mission time, altitude above ground, total and lateral acceleration (across the long axis, IMU Z), apogee, max speed/acceleration, distance and bearing from the pad, ground track |
 | Barometer | Altitude (MSL), vertical speed, pressure, temperature |
 | IMU | Acceleration, angular rate, orientation: each opens as X/Y/Z overlaid and expands to the single axes |
 | GPS | Latitude, longitude |

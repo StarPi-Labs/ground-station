@@ -60,6 +60,11 @@
         return Math.hypot(vector.x || 0, vector.y || 0, vector.z || 0);
     }
 
+    /** Magnitude across the rocket's long axis, which is the IMU's Z (see rocket/rocket-view.js). */
+    function lateral(vector) {
+        return Math.hypot(vector.x || 0, vector.y || 0);
+    }
+
     /** Distance (m) and bearing (°, clockwise from north) between two fixes. */
     function distanceBearing(from, to) {
         const R = 6371000;
@@ -110,6 +115,7 @@
             this.altitude = null;
             this.speed = null;
             this.accelG = null;
+            this.lateralG = null;
             this.fix = null;
         }
 
@@ -209,6 +215,7 @@
         onAccel({ x, y, z }) {
             const g = magnitude({ x, y, z }) / MG_PER_G;
             this.accelG = g;
+            this.lateralG = lateral({ x, y }) / MG_PER_G;
             if (!this.onGround()) {
                 this.maxAccelG = Math.max(this.maxAccelG, g);
             }
@@ -313,6 +320,7 @@
                 agl: this.agl,
                 speed: this.speed,
                 accelG: this.accelG,
+                lateralG: this.lateralG,
                 launchTime: this.launchTime,
                 apogee: this.apogee,
                 maxAgl: this.maxAgl,
@@ -338,6 +346,7 @@
         distanceBearing,
         localOffset,
         magnitude,
+        lateral,
         median
     };
 }));

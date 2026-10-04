@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { FlightTracker, distanceBearing, phaseOf, G, MG_PER_G } = require('./flight-state.js');
+const { FlightTracker, distanceBearing, lateral, phaseOf, G, MG_PER_G } = require('./flight-state.js');
 
 // A flight like the backend simulator's: 20 s on the pad, 2.2 s burn at 4 g,
 // coast to ~285 m, 8 m/s under the drogue, the main below 100 m at 5 m/s,
@@ -191,4 +191,16 @@ test('the pad position stops moving at launch', () => {
     const s = tracker.snapshot();
     assert.deepEqual(s.pad, { lat: 45, lon: 9 });
     assert.equal(s.track.length, 1);
+});
+
+test('lateral acceleration is across the long axis (IMU Z)', () => {
+    assert.equal(lateral({ x: 300, y: -400, z: 8000 }), 500);
+    const tracker = new FlightTracker();
+    assert.equal(tracker.snapshot().lateralG, null);
+    tracker.update({ t: 0, kind: 'accel', x: 300, y: -400, z: 8000 });
+    near(tracker.snapshot().lateralG, 0.5, 1e-9, 'lateral');
+    // Thrust along the axis alone is not lateral.
+    tracker.update({ t: 1, kind: 'accel', x: 0, y: 0, z: 8000 });
+    assert.equal(tracker.snapshot().lateralG, 0);
+    assert.equal(tracker.snapshot().accelG, 8);
 });

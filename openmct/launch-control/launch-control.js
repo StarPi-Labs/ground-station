@@ -173,6 +173,10 @@
                     <span class="lc-readout__label">Acceleration</span>
                     <span class="lc-readout__value"><span class="lc-num" data-ref="accel">—</span><span class="lc-unit">g</span></span>
                 </div>
+                <div class="lc-readout">
+                    <span class="lc-readout__label">Lateral acceleration</span>
+                    <span class="lc-readout__value"><span class="lc-num" data-ref="lateral">—</span><span class="lc-unit">g</span></span>
+                </div>
                 <dl class="lc-records" aria-label="Flight records">
                     <div><dt>Apogee</dt><dd><span class="lc-num" data-ref="apogee">—</span> <span class="lc-unit">m</span></dd><dd class="lc-num lc-records__when" data-ref="apogee-time"></dd></div>
                     <div><dt>Max speed</dt><dd><span class="lc-num" data-ref="max-speed">—</span> <span class="lc-unit">m/s</span></dd></div>
@@ -192,6 +196,10 @@
                 <div class="lc-chart">
                     <h3 class="lc-title">Acceleration <span class="lc-unit">g</span></h3>
                     <canvas data-ref="chart-accel"></canvas>
+                </div>
+                <div class="lc-chart">
+                    <h3 class="lc-title">Lateral acceleration <span class="lc-unit">g</span></h3>
+                    <canvas data-ref="chart-lateral"></canvas>
                 </div>
                 <p class="lc-empty" data-ref="charts-empty">Loading telemetry…</p>
             </section>
@@ -385,7 +393,7 @@
                 ...options,
                 groundOverride: readGround() ?? options.groundOverride
             });
-            this.series = { alt: [], speed: [], accel: [] };
+            this.series = { alt: [], speed: [], accel: [], lateral: [] };
             this.latest = {};
             this.logEntries = [];
             this.lastId = {};
@@ -490,6 +498,7 @@
                 this.tracker.update({ t, kind: 'accel', x: datum.x, y: datum.y, z: datum.z });
                 const g = window.StarPiFlight.magnitude(datum) / window.StarPiFlight.MG_PER_G;
                 this.series.accel.push({ t, v: g });
+                this.series.lateral.push({ t, v: window.StarPiFlight.lateral(datum) / window.StarPiFlight.MG_PER_G });
                 this.chartsDirty = true;
                 break;
             }
@@ -650,6 +659,7 @@
             refs.agl.textContent = fixed(flight.agl, 1);
             refs.speed.textContent = signed(flight.speed, 1);
             refs.accel.textContent = fixed(flight.accelG, 2);
+            refs.lateral.textContent = fixed(flight.lateralG, 2);
 
             refs.groundNote.textContent = flight.ground === null
                 ? 'Ground level: waiting for data'
@@ -723,6 +733,7 @@
             window.StarPiCharts.drawStrip(refs.chartAlt, { ...window_, series: series.alt, offset: -ground, floor: 10 });
             window.StarPiCharts.drawStrip(refs.chartSpeed, { ...window_, series: series.speed, zero: true, floor: 4 });
             window.StarPiCharts.drawStrip(refs.chartAccel, { ...window_, series: series.accel, floor: 1 });
+            window.StarPiCharts.drawStrip(refs.chartLateral, { ...window_, series: series.lateral, zero: true, floor: 0.5 });
         }
     }
 
