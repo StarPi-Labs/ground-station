@@ -4,8 +4,10 @@
  * The rocket reports its flight state (T_ROCKET_STATE); the rest is derived
  * here: launch time and phase times from the state changes, ground level and
  * altitude above it from the barometer, apogee and other records, the pad
- * position from GPS. Pure logic, no DOM: runs in the browser
- * (window.StarPiFlight) and under `node --test`.
+ * position from GPS. Also LinkSelector, which decides which link's packets
+ * the tracker and every view get when two links carry the same quantity.
+ * Pure logic, no DOM: runs in the browser (window.StarPiFlight) and under
+ * `node --test`.
  */
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) {
@@ -37,6 +39,79 @@
         groundWindow: 50, // Pad altitude samples in the ground-level median.
         padFixWindow: 20 // Pad GPS fixes averaged into the pad position.
     };
+
+    // Links, best first, for the message types more than one of them carries:
+    // BLE has every type at full rate, LoRa a few packets a second of some.
+    const LINK_PREFERENCE = ['ble', 'lora'];
+    // A link keeps a message type while that type keeps coming over it: for
+    // three of its usual intervals, at least LINK_HOLD_MIN_MS (packets come in
+    // bursts) and at most LINK_HOLD_MAX_MS (when the type goes stale anyway).
+    const LINK_HOLD_INTERVALS = 3;
+    const LINK_HOLD_MIN_MS = 500;
+    const LINK_HOLD_MAX_MS = 5000;
+
+    /**
+     * One link per message type. With two links up the same quantity arrives
+     * twice, the second copy later and at another rate, and passing both on
+     * doubles every sample: plots zig-zag between them and the tracker's
+     * medians and averages count the rocket twice.
+     *
+     * A packet is taken unless a better link (LINK_PREFERENCE) delivered the
+     * same type a moment ago. So BLE feeds what it carries while it is heard,
+     * LoRa takes each type over about half a second after BLE's last packet
+     * of it, and hands it back with BLE's next one. A type only one link
+     * carries always passes.
+     *
+     * `at` is when the ground station received the packet (received_at_us),
+     * in ms: links are compared by what reached the ground, whatever the
+     * rocket's clock says. The same rule serves the live stream and stored
+     * packets, so a replay shows what was shown live.
+     */
+    class LinkSelector {
+        constructor(preference = LINK_PREFERENCE) {
+            this.preference = preference;
+            this.types = new Map(); // message type -> Map<link, { seen, interval }>
+        }
+
+        /** Whether `a` is preferred to `b`; links not in the list come last, by name. */
+        better(a, b) {
+            const rank = (link) => {
+                const index = this.preference.indexOf(link);
+
+                return index < 0 ? this.preference.length : index;
+            };
+
+            return rank(a) !== rank(b) ? rank(a) < rank(b) : a < b;
+        }
+
+        accept(type, link, at) {
+            if (!this.types.has(type)) {
+                this.types.set(type, new Map());
+            }
+            const links = this.types.get(type);
+            if (!links.has(link)) {
+                links.set(link, { seen: -Infinity, interval: 0 });
+            }
+            const own = links.get(link);
+            if (at > own.seen) {
+                const gap = at - own.seen;
+                // The usual interval: the last gap, or half the previous
+                // estimate when packets of a burst arrive together. A long
+                // silence says nothing about the rate.
+                own.interval = gap > LINK_HOLD_MAX_MS ? 0 : Math.max(gap, own.interval / 2);
+                own.seen = at;
+            }
+
+            for (const [other, { seen, interval }] of links) {
+                const hold = Math.min(LINK_HOLD_MAX_MS, Math.max(LINK_HOLD_MIN_MS, LINK_HOLD_INTERVALS * interval));
+                if (other !== link && this.better(other, link) && at - seen <= hold) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
 
     /** A phase from a T_ROCKET_STATE payload ("RS_BOOST", or its ordinal), or null. */
     function phaseOf(payload) {
@@ -343,6 +418,8 @@
         phaseOf,
         DEFAULTS,
         FlightTracker,
+        LINK_PREFERENCE,
+        LinkSelector,
         distanceBearing,
         localOffset,
         magnitude,
