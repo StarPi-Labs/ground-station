@@ -256,7 +256,10 @@ served at `/licenses/`.
 Both follow the time conductor at the bottom: *Real-time* shows the live
 flight, *Fixed* replays any past window. The only custom piece in the standard
 dashboard is **Commands** (Open MCT has no commanding UI without YAMCS): each
-command needs a second click to confirm and is disabled while its link is down.
+command is one row with a send button per link, needs a second click to confirm
+and is disabled while that link is down. The commands that fire a charge
+(`eject_a`, `eject_c`, `cut_main`) sit in their own box and must be unlocked
+first; they lock again after 30 s.
 
 ### Flight state and ground level
 

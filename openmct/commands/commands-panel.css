@@ -25,6 +25,7 @@
     margin: 0;
 }
 
+.sp-cmd__groups,
 .sp-cmd__list {
     display: flex;
     flex-direction: column;
@@ -68,8 +69,49 @@
 }
 
 .sp-cmd .sp-cmd__danger {
-    background: #e0423b;
-    color: #fff;
+    border-color: var(--sp-alarm);
+    background: var(--sp-alarm);
+    color: var(--sp-bg);
+}
+
+/* The commands that fire a charge: boxed in the alarm colour, apart from the rest. */
+.sp-cmd__pyro {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--sp-alarm);
+    border-left-width: 4px;
+    border-radius: 4px;
+    background: color-mix(in oklch, var(--sp-alarm) 8%, transparent);
+}
+
+.sp-cmd__pyro.is-unlocked {
+    background: color-mix(in oklch, var(--sp-alarm) 20%, transparent);
+}
+
+.sp-cmd__pyro-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+}
+
+.sp-cmd__pyro-title {
+    color: var(--sp-alarm);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.sp-cmd__pyro.is-unlocked .sp-cmd__pyro-title {
+    color: var(--sp-warn);
+}
+
+.sp-cmd__pyro-head p {
+    opacity: 0.75;
 }
 
 .sp-cmd__result {
