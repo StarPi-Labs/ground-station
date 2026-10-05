@@ -1,13 +1,11 @@
-# radio_app, the firmware repo's LoRa ground receiver (mcu: app/raspberry),
-# which drives the radio for the backend's LoRa link. Its source is not in
-# this repository: it comes from the `src` build context declared in
-# docker-compose.yml (RADIO_APP_SRC).
+# radio_app, the LoRa ground receiver, which drives the radio for the
+# backend's LoRa link.
 FROM debian:trixie-slim AS build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates cmake g++ git make \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=src CMakeLists.txt /src/CMakeLists.txt
-COPY --from=src src /src/src
+COPY CMakeLists.txt /src/CMakeLists.txt
+COPY src /src/src
 # Fetches RadioLib, half, nlohmann/json and lgpio, and builds them.
 RUN cmake -S /src -B /build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build /build -j"$(nproc)" \

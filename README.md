@@ -19,9 +19,8 @@ The software stack involves the following components:
 ## Getting Started
 
 Prerequisites: Docker with Compose, Make, and BlueZ on the host for the
-Bluetooth rocket link. The LoRa link also needs the firmware repository
-(`mcu`) checked out, to build its `radio_app` from, and SPI enabled on the Pi
-(see [LoRa link](#lora-link)).
+Bluetooth rocket link. The LoRa link also needs SPI enabled on the Pi (see
+[LoRa link](#lora-link)).
 
 ```sh
 make up   # power on the Bluetooth controller, build, start, wait until healthy
@@ -75,34 +74,37 @@ graph LR
 
 ### LoRa link
 
-The LoRa radio is driven by `radio_app`, a program from the firmware
-repository (`app/raspberry/` in `mcu`). It runs in a third container, `radio`,
-which only exists when the LoRa link is asked for, and the backend's `lora`
-link talks to it over two Unix sockets in a directory both mount: `./run`.
+The LoRa radio is driven by `radio_app`, a C++ program in [`radio/`](radio)
+(RadioLib on the Pi's SPI bus). It runs in a third container, `radio`, which
+only exists when the LoRa link is asked for, and the backend's `lora` link
+talks to it over two Unix sockets in a directory both mount: `./run`.
 
 ```sh
 make up SP_LINKS=ble,lora   # backend, apache and radio
 make logs S=radio           # radio_app's protocol state and received packets
 ```
 
-Put `SP_LINKS=ble,lora` in `.env` to keep it. What the `radio` service needs:
+Put `SP_LINKS=ble,lora` in `.env` to keep it. The `radio` service needs the
+radio's devices on the Pi, `/dev/spidev0.0` and `/dev/gpiochip0`: enable SPI
+once with `sudo raspi-config nonint do_spi 0` and reboot. The module's pins
+and radio settings are in `radio/src/board.h`. `make images` and `make deploy`
+include the radio image, so the Pi needs no compiler.
 
-* **The firmware source to build from**: `RADIO_APP_SRC`, by default
-  `../../mcu.git/logging/app/raspberry` (a checkout of `mcu` next to this
-  repository). `make images` and `make deploy` include the radio image when
-  that directory is there, so the Pi needs neither the source nor a compiler.
-* **The radio's devices on the Pi**: `/dev/spidev0.0` and `/dev/gpiochip0`.
-  Enable SPI once with `sudo raspi-config nonint do_spi 0` and reboot. The
-  module's pins are in `radio_app`'s `src/board.h`.
+`radio/src/lora.{h,cpp}` is the ground side of the time-slotted LoRa protocol
+the flight computer runs (`app/include/lora.h` and `app/src/lora.cpp` in the
+`mcu` repository). The packet structs and the `LoRaCommand` ids in the two
+`lora.h` files must stay identical: change one side, change the other.
 
 Either side can be restarted alone: the backend retries every 2 s until
-`radio_app` is there. To run `radio_app` on the host instead (built with cmake
-in the firmware repository), keep the container off and give it the same
-directory: `make up SP_LINKS=ble,lora COMPOSE_PROFILES=`, then
-`radio_app "$PWD/run"`. Without an argument it uses `/tmp`, which is where a
+`radio_app` is there. To run `radio_app` on the host instead, build it with
+`cmake -S radio -B radio/build && cmake --build radio/build` (fetches
+RadioLib, half, nlohmann/json, and lgpio if not installed), keep the container
+off and give it the same directory: `make up SP_LINKS=ble,lora
+COMPOSE_PROFILES=`, then `radio/build/radio_app "$PWD/run"`. Without an argument it uses `/tmp`, which is where a
 backend run outside Docker looks for it; another directory goes in
 `LORA_SOCKET_DIR` (keep the path short: a socket path cannot exceed 107
-characters).
+characters). `radio/test_command.sh` sends example commands to the socket in
+`/tmp` (needs `socat`).
 
 `GET /api/health` tells the two states apart: the `lora` link is `connected`
 only while the rocket is on the LoRa link; `radio_app: true` with

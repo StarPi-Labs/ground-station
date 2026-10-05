@@ -43,16 +43,13 @@ services:
     depends_on:
       - backend
 
-  # The LoRa radio: the firmware repo's radio_app, on the Pi's SPI bus. Only
-  # with the lora profile (`make up SP_LINKS=ble,lora` turns it on), since it
-  # needs the radio's devices and the firmware source to build from.
+  # The LoRa radio: radio_app (radio/), on the Pi's SPI bus. Only with the
+  # lora profile (`make up SP_LINKS=ble,lora` turns it on), since it needs the
+  # radio's devices.
   radio:
     profiles: [lora]
     image: starpi/gs-radio:latest
-    build:
-      context: radio
-      additional_contexts:
-        src: ${RADIO_APP_SRC:-../../mcu.git/logging/app/raspberry}
+    build: radio
     restart: unless-stopped
     devices:
       - /dev/spidev0.0

@@ -1,7 +1,7 @@
-"""LoRa link, through the firmware's ``radio_app``.
+"""LoRa link, through ``radio_app``.
 
-The radio is not driven from here: ``radio_app`` (``app/raspberry/`` in the
-``mcu`` repo) runs the LoRa protocol on the Pi and this link talks to it over
+The radio is not driven from here: ``radio_app`` (``radio/`` in this
+repository) runs the LoRa protocol on the Pi and this link talks to it over
 its two Unix sockets, JSON lines both ways:
 
 * telemetry socket (``telemetry_output.h``): the protocol state on connect and
@@ -9,7 +9,7 @@ its two Unix sockets, JSON lines both ways:
 * command socket (``command_input.h``): ``{"command": <id>, "data": <u64>}``.
 
 A LoRa data packet is not a ``LogMessage``: it is one fixed summary of the
-latest values (``LoRaDataPacket`` in the firmware's ``lora.h``). It is turned
+latest values (``LoRaDataPacket`` in ``radio/src/lora.h``). It is turned
 back into the frames the rocket logged, so everything downstream sees the same
 wire bytes as on BLE:
 

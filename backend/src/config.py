@@ -73,7 +73,7 @@ class Config:
     )
 
     # --- LoRa ---
-    # Unix sockets of the firmware's radio_app, which drives the radio: JSON
+    # Unix sockets of radio_app (radio/), which drives the radio: JSON
     # lines out (telemetry, protocol state) and in (commands).
     lora_tlm_socket: str = field(
         default_factory=lambda: _env_str("SP_LORA_TLM_SOCKET", "/tmp/starpi_tlm.sock")

@@ -18,9 +18,8 @@ than by its `link` name.
 
 * Docker >= 29.*: for running the backend in a container.
 * BlueZ >= 5.55: for Bluetooth communication with the mcu.
-* The firmware's `radio_app` (`app/raspberry/` in the `mcu` repo) running on
-  the same machine, for the LoRa link only: the top-level `radio` service, or
-  the program itself on the host.
+* `radio_app` (`../radio/`) running on the same machine, for the LoRa link
+  only: the top-level `radio` service, or the program itself on the host.
 * Make: for building/running.
 
 ## Getting Started
@@ -249,10 +248,10 @@ packets, but history queries that reach its damaged pages fail with a 500.
 
 ## LoRa link
 
-The radio is driven by the firmware's `radio_app`, not by this backend.
+The radio is driven by `radio_app` (`../radio/`), not by this backend.
 `links/lora.py` connects to its two Unix sockets and reconnects when it
-restarts; the line formats are documented in `radio_app`'s
-`telemetry_output.h` and `command_input.h`.
+restarts; the line formats are documented in `radio/src/telemetry_output.h`
+and `radio/src/command_input.h`.
 
 In `/api/health` and `/api/links` the link reports:
 
@@ -335,7 +334,7 @@ src/
   links/
     base.py     transport interface
     ble.py      Bluetooth LE (Ble.hpp)
-    lora.py     LoRa, through the firmware's radio_app
+    lora.py     LoRa, through radio_app (../radio)
     sim.py      telemetry simulator
   web/index.html  dashboard (served only with SP_SERVE_WEB=true)
 ```

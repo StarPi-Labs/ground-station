@@ -10,24 +10,15 @@ COMPOSE ?= docker compose
 # (linux/arm/v7 for a 32-bit Raspberry Pi OS).
 PI ?= starpi.local
 PLATFORM ?= linux/arm64
-IMAGES := starpi/gs-backend:latest starpi/gs-apache:latest
+IMAGES := starpi/gs-backend:latest starpi/gs-apache:latest starpi/gs-radio:latest
 BUNDLE ?= starpi-images.tar.gz
 # up and sim rebuild by default; BUILD=--no-build runs the images already here.
 BUILD ?= --build
 # Links `make sim` starts; `make sim2` is sim-ble,sim-lora.
 SIM_LINKS ?= sim
-# Shared with the firmware's radio_app for the LoRa link: it creates its
-# sockets here, the backend reads them.
+# Shared with radio_app (radio/) for the LoRa link: it creates its sockets
+# here, the backend reads them.
 LORA_SOCKET_DIR ?= ./run
-# radio_app's source, in a checkout of the firmware repo (mcu): the radio
-# service is built from it. Without it the radio image is left out of
-# `make images`, and radio_app has to be run on the host.
-RADIO_APP_SRC ?= ../../mcu.git/logging/app/raspberry
-export RADIO_APP_SRC
-ifneq (,$(wildcard $(RADIO_APP_SRC)/CMakeLists.txt))
-IMAGES += starpi/gs-radio:latest
-IMAGE_PROFILES := lora
-endif
 # The radio service runs when the LoRa link is asked for (SP_LINKS=ble,lora).
 # `COMPOSE_PROFILES=` on the command line keeps it off, for radio_app on the host.
 comma := ,
@@ -139,7 +130,7 @@ images:
 	docker exec $(EMU_HOLD) test -f /ready && \
 	docker run --privileged --rm tonistiigi/binfmt --install $(EMU_ARCH) >/dev/null && \
 	echo "QEMU ready for $(PLATFORM)" && \
-	COMPOSE_PROFILES=$(IMAGE_PROFILES) DOCKER_DEFAULT_PLATFORM=$(PLATFORM) $(COMPOSE) build
+	COMPOSE_PROFILES=lora DOCKER_DEFAULT_PLATFORM=$(PLATFORM) $(COMPOSE) build
 
 bundle: images
 	docker save $(IMAGES) | gzip > $(BUNDLE)
