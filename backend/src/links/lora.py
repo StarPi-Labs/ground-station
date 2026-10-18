@@ -17,14 +17,17 @@ wire bytes as on BLE:
     LoRa field                    message type      source  payload
     ============================  ================  ======  ==================
     imu.altitude, imu.vspeed      T_FILTER_STATE       S_IMU   P_FVEC2 m, m/s
-    baro.p1, baro.p2              T_PRESSURE        S_BARO  P_FVEC2 mbar, mbar
+    baro.p1, baro.p2              T_PRESSURE        S_BARO  P_FVEC2 Pa, Pa
     gps.latitude, gps.longitude   T_GPS             S_GPS   P_FVEC2 degrees
     state & 0x7f                  T_ROCKET_STATE    S_PARA  P_ROCKET_STATE
     ============================  ================  ======  ==================
 
 Values and units are the firmware's, as on BLE, but altitude, speed and
-pressure travel as float16: 11 significant bits, so pressure comes in 0.5 mbar
-steps and altitude in 1 m steps above 1024 m, 2 m above 2048 m.
+pressure travel as float16: 11 significant bits, so altitude comes in 1 m
+steps above 1024 m, 2 m above 2048 m. Pressure is in Pa and float16 ends at
+65504: a rocket below ~3.5 km sends infinity, which radio_app passes as null
+and this link skips, so over LoRa there is no pressure until the firmware
+changes its scale.
 ``imu.attitude`` (tilt from vertical), bit 7 of ``state`` (the system is
 armed) and ``sensor_status`` (bit 0 IMU healthy, bit 1 barometers healthy)
 have no ``LogMessage`` equivalent and are only reported in

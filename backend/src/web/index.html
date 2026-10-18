@@ -175,12 +175,12 @@ const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.
 // Human-readable labels for each message type, and how to render its payload.
 const TYPES = {
   T_ACCELLERATION: { label: "Acceleration",  unit: "mg",    fmt: v => vec(v, 0) },
-  T_GYRO:          { label: "Gyroscope",     unit: "mdps",  fmt: v => vec(v, 0) },
+  T_GYRO:          { label: "Gyroscope",     unit: "°/s",   fmt: v => vec(v, 2) },
   T_ORIENTATION:   { label: "Orientation",   unit: "°",     fmt: v => vec(v, 1) },
   T_FILTER_STATE:  { label: "Altitude filter", unit: "m, m/s, g",
                      fmt: v => v && typeof v === "object" ? `${v.x.toFixed(1)} m · ${v.y.toFixed(1)} m/s` + (v.z === undefined ? "" : ` · ${v.z.toFixed(2)} g`) : String(v) },
-  T_PRESSURE:      { label: "Pressure",      unit: "hPa",   fmt: v => vec(v, 2) },
-  T_TEMPERATURE:   { label: "Temperature",   unit: "°C",    fmt: v => vec(v, 2) },
+  T_PRESSURE:      { label: "Pressure",      unit: "Pa",    fmt: v => vec(v, 0) },
+  T_TEMPERATURE:   { label: "Temperature at calibration", unit: "°C",    fmt: v => vec(v, 2) },
   T_GPS:           { label: "GPS",           unit: "lat, lon",
                      fmt: v => v && typeof v === "object" ? `${v.x.toFixed(5)}, ${v.y.toFixed(5)}` : String(v) },
   T_SYSLOG:        { label: "Syslog",        unit: "",      fmt: v => String(v) },

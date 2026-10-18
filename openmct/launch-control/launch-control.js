@@ -36,7 +36,6 @@
         gyro: ['gyro-x', 'gyro-y', 'gyro-z'],
         orient: ['orient-x', 'orient-y', 'orient-z'],
         pressure: ['pressure'],
-        temp: ['temp'],
         gps: ['gps-distance', 'gps-bearing', 'gps-lat', 'gps-lon']
     };
 
@@ -246,11 +245,11 @@
                     <div><dt>Gyro Y</dt><dd class="lc-num" data-ref="gyro-y">—</dd></div>
                     <div><dt>Gyro Z</dt><dd class="lc-num" data-ref="gyro-z">—</dd></div>
                 </dl>
-                <p class="lc-hint">Gyro in mdps (milli-degrees per second). Axes as reported by the flight computer.</p>
+                <p class="lc-hint">Gyro in °/s, bias-corrected by the flight computer. Axes as reported by the flight computer.</p>
                 <h3 class="lc-title">Environment</h3>
                 <dl class="lc-pairs">
-                    <div><dt>Pressure</dt><dd><span class="lc-num" data-ref="pressure">—</span> <span class="lc-unit">hPa</span></dd></div>
-                    <div><dt>Temperature</dt><dd><span class="lc-num" data-ref="temp">—</span> <span class="lc-unit">°C</span></dd></div>
+                    <div><dt>Pressure</dt><dd><span class="lc-num" data-ref="pressure">—</span> <span class="lc-unit">Pa</span></dd></div>
+                    <div><dt>Temperature (at calibration)</dt><dd><span class="lc-num" data-ref="temp">—</span> <span class="lc-unit">°C</span></dd></div>
                 </dl>
             </section>
 
@@ -703,9 +702,9 @@
                 const angle = latest.orient?.[axis];
                 refs[`orient-${axis}`].textContent = fixed(angle, 1);
                 refs[`orient-${axis}-needle`].setAttribute('transform', `rotate(${Number.isFinite(angle) ? angle : 0})`);
-                refs[`gyro-${axis}`].textContent = fixed(latest.gyro?.[axis], 0);
+                refs[`gyro-${axis}`].textContent = fixed(latest.gyro?.[axis], 2);
             }
-            refs.pressure.textContent = fixed(latest.pressure?.value, 2);
+            refs.pressure.textContent = fixed(latest.pressure?.value, 0);
             refs.temp.textContent = fixed(latest.temp?.value, 1);
 
             refs.gpsLat.textContent = flight.fix ? `${flight.fix.lat.toFixed(6)}°` : '—';

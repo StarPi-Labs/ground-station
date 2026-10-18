@@ -71,13 +71,13 @@
             ]
         },
         T_ACCELLERATION: { name: 'Acceleration', fields: vector('mg') },
-        T_GYRO: { name: 'Gyroscope', fields: vector('mdps') },
+        T_GYRO: { name: 'Gyroscope', fields: vector('°/s') },
         T_ORIENTATION: { name: 'Orientation', fields: vector('°') },
         T_PRESSURE: {
             name: 'Pressure',
             fields: [
-                { key: 'value', name: 'Pressure 1', unit: 'hPa', from: 'x' },
-                { key: 'value2', name: 'Pressure 2', unit: 'hPa', from: 'y' }
+                { key: 'value', name: 'Pressure 1', unit: 'Pa', from: 'x' },
+                { key: 'value2', name: 'Pressure 2', unit: 'Pa', from: 'y' }
             ]
         },
         T_TEMPERATURE: {
@@ -113,17 +113,19 @@
         'baro.altitude': { name: 'Altitude (filter)', message: 'T_FILTER_STATE', from: 'x', unit: 'm', precision: 1 },
         'baro.speed': { name: 'Vertical speed', message: 'T_FILTER_STATE', from: 'y', unit: 'm/s', precision: 1 },
         'baro.accel': { name: 'Vertical acceleration (filter)', message: 'T_FILTER_STATE', from: 'z', unit: 'g', precision: 2 },
-        'baro.pressure': { name: 'Pressure (barometer 1)', message: 'T_PRESSURE', from: 'x', unit: 'hPa', precision: 2 },
-        'baro.pressure2': { name: 'Pressure (barometer 2)', message: 'T_PRESSURE', from: 'y', unit: 'hPa', precision: 2 },
-        'baro.temperature': { name: 'Temperature (barometer 1)', message: 'T_TEMPERATURE', from: 'x', unit: '°C', precision: 1 },
-        'baro.temperature2': { name: 'Temperature (barometer 2)', message: 'T_TEMPERATURE', from: 'y', unit: '°C', precision: 1 },
+        'baro.pressure': { name: 'Pressure (barometer 1)', message: 'T_PRESSURE', from: 'x', unit: 'Pa', precision: 0 },
+        'baro.pressure2': { name: 'Pressure (barometer 2)', message: 'T_PRESSURE', from: 'y', unit: 'Pa', precision: 0 },
+        // The rocket logs temperature once, at the end of a sensor calibration:
+        // it never streams, so it never goes stale.
+        'baro.temperature': { name: 'Temperature at calibration (barometer 1)', message: 'T_TEMPERATURE', from: 'x', unit: '°C', precision: 1, stale: false },
+        'baro.temperature2': { name: 'Temperature at calibration (barometer 2)', message: 'T_TEMPERATURE', from: 'y', unit: '°C', precision: 1, stale: false },
         'gps.lat': { name: 'Latitude', message: 'T_GPS', from: 'x', unit: '°', precision: 6 },
         'gps.lon': { name: 'Longitude', message: 'T_GPS', from: 'y', unit: '°', precision: 6 },
         'sys.log': { name: 'System log', message: 'T_SYSLOG', from: null, format: 'string' }
     };
     for (const [group, name, message, unit, precision] of [
         ['accel', 'Acceleration', 'T_ACCELLERATION', 'mg', 0],
-        ['gyro', 'Angular rate', 'T_GYRO', 'mdps', 0],
+        ['gyro', 'Angular rate', 'T_GYRO', '°/s', 2],
         ['orientation', 'Orientation', 'T_ORIENTATION', '°', 1]
     ]) {
         for (const axis of ['x', 'y', 'z']) {
@@ -953,7 +955,8 @@
                         options
                     );
                 },
-                supportsStaleness: is(POINT_TYPE),
+                supportsStaleness: (domainObject) => is(POINT_TYPE)(domainObject)
+                    && POINTS[domainObject.identifier.key].stale !== false,
                 isStale(domainObject) {
                     const spec = POINTS[domainObject.identifier.key];
 

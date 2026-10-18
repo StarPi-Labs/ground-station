@@ -277,12 +277,14 @@ the API and the websocket see the same messages as over BLE:
 | LoRa field | Message | Source | Payload |
 | --- | --- | --- | --- |
 | `imu.altitude`, `imu.vspeed` | `T_FILTER_STATE` | `S_IMU` | `P_FVEC2`: x altitude (m), y vertical speed (m/s) |
-| `baro.p1`, `baro.p2` | `T_PRESSURE` | `S_BARO` | `P_FVEC2`: the two barometers (mbar) |
+| `baro.p1`, `baro.p2` | `T_PRESSURE` | `S_BARO` | `P_FVEC2`: the two barometers (Pa) |
 | `gps.latitude`, `gps.longitude` | `T_GPS` | `S_GPS` | `P_FVEC2`: x latitude, y longitude (degrees) |
 | `state & 0x7f` | `T_ROCKET_STATE` | `S_PARA` | `P_ROCKET_STATE` (bit 7, the armed flag, goes to `armed` in the link status) |
 
 * Units are the firmware's, as over BLE. Altitude, speed and pressure travel
-  as 16-bit floats (11 significant bits): pressure in 0.5 mbar steps, altitude
+  as 16-bit floats (11 significant bits). Pressure is in Pa and overflows the
+  16-bit float (max 65504) below ~3.5 km, so `radio_app` sends `null` and no
+  pressure frame is made until the firmware changes its scale. Altitude comes
   in 1 m steps above 1024 m and 2 m above 2048 m.
 * Timestamps are the rocket's clock, never the ground's. Each group carries
   `dt`, its age in ms relative to the packet's transmit time, so a frame is

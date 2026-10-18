@@ -42,7 +42,6 @@ log = logging.getLogger(__name__)
 
 G = 9.81
 MG_PER_MS2 = 1000.0 / G  # the accelerometer reports milli-g
-MDPS_PER_DPS = 1000.0  # the gyroscope reports milli-degrees per second
 
 # One simulated flight, repeated forever: seconds from the start of the cycle.
 # Sized for the real rocket's target: apogee ~3000 m, dual-deploy recovery.
@@ -196,9 +195,9 @@ def rocket_state(t: float) -> RocketState:
     return RocketState.RS_TOUCHDOWN
 
 
-def _pressure_hpa(altitude_m: float) -> float:
-    """International standard atmosphere, troposphere."""
-    return 1013.25 * (1.0 - 2.25577e-5 * altitude_m) ** 5.25588
+def _pressure_pa(altitude_m: float) -> float:
+    """International standard atmosphere, troposphere, in Pa as the rocket logs it."""
+    return 101325.0 * (1.0 - 2.25577e-5 * altitude_m) ** 5.25588
 
 
 def _offset(lat: float, lon: float, *, north_m: float, east_m: float) -> tuple[float, float]:
@@ -219,9 +218,16 @@ def _flight_start() -> float:
     return _t0
 
 
-def _float16(value: float) -> float:
-    """``value`` as it comes out of a LoRa packet's 16-bit float."""
-    return struct.unpack("<e", struct.pack("<e", value))[0]
+def _float16(value: float) -> float | None:
+    """``value`` as it comes out of a LoRa packet's 16-bit float.
+
+    Past 65504 the firmware's float16 is infinite, which radio_app sends as
+    null: pressure in Pa always is.
+    """
+    try:
+        return struct.unpack("<e", struct.pack("<e", value))[0]
+    except OverflowError:
+        return None
 
 
 # The rocket's commands, all accepted and none acted on.
@@ -331,11 +337,11 @@ class SimLink(Link):
             return message(
                 SourceSubsystem.S_IMU,
                 MessagePayloadType.P_FVEC3,
-                # In mdps, as the rocket's gyroscope reports it.
+                # In °/s, bias-corrected, as the rocket logs it.
                 {
-                    "x": (jitter(2.0) + state.sway * 8.0) * MDPS_PER_DPS,
-                    "y": jitter(2.0) * MDPS_PER_DPS,
-                    "z": (state.spin + jitter(2.0)) * MDPS_PER_DPS,
+                    "x": (jitter(2.0) + state.sway * 8.0),
+                    "y": jitter(2.0),
+                    "z": (state.spin + jitter(2.0)),
                 },
             )
         if msg_type is MessageType.T_ORIENTATION:
@@ -359,8 +365,8 @@ class SimLink(Link):
                 SourceSubsystem.S_BARO,
                 MessagePayloadType.P_FVEC2,  # the two barometers, like the firmware
                 {
-                    "x": _pressure_hpa(PAD_ALTITUDE_M + altitude) + jitter(0.05),
-                    "y": _pressure_hpa(PAD_ALTITUDE_M + altitude) + 0.3 + jitter(0.05),
+                    "x": _pressure_pa(PAD_ALTITUDE_M + altitude) + jitter(5.0),
+                    "y": _pressure_pa(PAD_ALTITUDE_M + altitude) + 30.0 + jitter(5.0),
                 },
             )
         if msg_type is MessageType.T_TEMPERATURE:
@@ -496,8 +502,8 @@ class SimLoRaLink(LoRaLink):
                 "dt_ms": -LORA_AGE_MS["imu"],
             },
             "baro": {
-                "p1": _float16(_pressure_hpa(altitude)),
-                "p2": _float16(_pressure_hpa(altitude) + 0.3),
+                "p1": _float16(_pressure_pa(altitude)),
+                "p2": _float16(_pressure_pa(altitude) + 30.0),
                 "dt_ms": -LORA_AGE_MS["baro"],
             },
             "gps": {"latitude": lat, "longitude": lon, "dt_ms": -LORA_AGE_MS["gps"]},
