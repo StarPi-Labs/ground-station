@@ -1,0 +1,56 @@
+/*
+ * Open MCT's shell in StarPi colours, on top of its own Espresso / Snow
+ * themes (theme.js swaps those). Only the frame around the views is touched
+ * here: the header, the logo, the About dialog and the base font. The accent
+ * on selections, icons and menus is in openmct-accent.css (generated).
+ *
+ * Open MCT adds its theme stylesheet after this one, so selectors carry a
+ * leading :root to outrank the theme's own rules of equal weight.
+ */
+:root body {
+    font-family: var(--sp-font);
+}
+
+/* Header: brand chrome over the ring stripe of the patch. */
+:root .l-shell__head {
+    position: relative;
+    background: var(--sp-chrome);
+    color: var(--sp-chrome-ink);
+}
+
+:root .l-shell__head::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 2px;
+    background: var(--sp-stripe);
+    pointer-events: none;
+}
+
+/* The app logo, top right. brand.js sets the image through Open MCT's
+   branding API; Open MCT sizes the box for its own wide wordmark. */
+:root .l-shell__app-logo {
+    width: 28px;
+    height: 28px;
+    background-size: contain;
+}
+
+/* About dialog: the patch on the night sky instead of NASA's artwork. */
+.c-about .c-splash-image {
+    background: var(--sp-night) url("assets/patch-512.png") center / contain no-repeat;
+}
+
+.c-about .c-splash-image::before,
+.c-about .c-splash-image::after {
+    content: none;
+}
+
+.sp-about {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sp-about .sp-lockup {
+    font-size: 28px;
+}

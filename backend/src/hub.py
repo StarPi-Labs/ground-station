@@ -10,8 +10,10 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 #: Per-client queue depth. A client that falls this far behind starts losing
-#: the oldest events rather than back-pressuring the ingest path.
-CLIENT_QUEUE_SIZE = 256
+#: the oldest events rather than back-pressuring the ingest path. About 10 s
+#: at 400 pkt/s (the rocket sends ~300, the simulator 350 by default): a browser busy
+#: loading history for a second or two must not lose live packets.
+CLIENT_QUEUE_SIZE = 4000
 
 
 class Subscriber:

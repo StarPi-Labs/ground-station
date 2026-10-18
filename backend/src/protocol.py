@@ -1,10 +1,11 @@
 """Wire protocol for LogMessage frames.
 
-Mirrors ``spec/Proto.hpp``. A serialized frame is::
+Mirrors ``spec/logger.h``. A serialized frame is::
 
     +-----------+----------------+--------------------+
     | timestamp | flags          | payload            |
-    | 8 B       | 2 B            | 0..N B             |
+    | 8 B       | 2 B (ceil of   | 0..N B             |
+    |           | 11 bits / 8)   |                    |
     +-----------+----------------+--------------------+
 
 All multi-byte fields are little-endian.
@@ -14,7 +15,7 @@ the least significant bit:
 
     bits 0..3   payload type index   (MESSAGE_PAYLOAD_TYPE_ENCODED_BITS = 4)
     bits 4..6   source subsystem idx (SOURCE_SUBSYSTEM_ENCODED_BITS = 3)
-    bits 7..9   message type index   (MESSAGE_TYPE_ENCODED_BITS = 3)
+    bits 7..10  message type index   (MESSAGE_TYPE_ENCODED_BITS = 4)
 
 The spec constrains the field widths by ``ceil(log2(number_of_entries))``, so
 what travels on the wire is the ordinal of each enum entry; the enum constants
@@ -28,13 +29,17 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any
 
-# --- Field widths, from Proto.hpp -------------------------------------------------
+# --- Field widths, from logger.h --------------------------------------------------
 
 MESSAGE_PAYLOAD_TYPE_ENCODED_BITS = 4
 SOURCE_SUBSYSTEM_ENCODED_BITS = 3
-MESSAGE_TYPE_ENCODED_BITS = 3
+MESSAGE_TYPE_ENCODED_BITS = 4
 
-HEADER_SIZE = 10  # 8 B timestamp + 2 B flags
+_FLAGS_BITS = (
+    MESSAGE_PAYLOAD_TYPE_ENCODED_BITS + SOURCE_SUBSYSTEM_ENCODED_BITS + MESSAGE_TYPE_ENCODED_BITS
+)
+FLAGS_SIZE = -(-_FLAGS_BITS // 8)  # ceil(bits / 8.0) bytes: 2 B for 4 + 3 + 4 bits
+HEADER_SIZE = 8 + FLAGS_SIZE  # 8 B timestamp + flags
 
 _PAYLOAD_SHIFT = 0
 _SRC_SHIFT = MESSAGE_PAYLOAD_TYPE_ENCODED_BITS
@@ -64,6 +69,7 @@ class MessagePayloadType(IntEnum):
     P_FVEC2 = 1 << 6
     P_FVEC3 = 1 << 7
     P_STRING = 1 << 8
+    P_ROCKET_STATE = 1 << 9
 
     @property
     def index(self) -> int:
@@ -77,7 +83,8 @@ class SourceSubsystem(IntEnum):
     S_GPS = 1 << 3
     S_LORA = 1 << 4
     S_SD = 1 << 5
-    S_BLE = 1 << 6
+    S_PARA = 1 << 6
+    S_BLE = 1 << 7
 
     @property
     def index(self) -> int:
@@ -93,10 +100,26 @@ class MessageType(IntEnum):
     T_GPS = 1 << 5
     T_SYSLOG = 1 << 6
     T_ORIENTATION = 1 << 7
+    T_ROCKET_STATE = 1 << 8
 
     @property
     def index(self) -> int:
         return self.value.bit_length() - 1
+
+
+class RocketState(IntEnum):
+    """Flight state reported by the rocket in a ``P_ROCKET_STATE`` payload.
+
+    Unlike the enums above these are plain ordinals, as in the C enum, and they
+    travel as a single byte.
+    """
+
+    RS_IDLE = 0  # on the ramp
+    RS_BOOST = 1  # motor burning, ascending
+    RS_COAST = 2  # motor burnt out, still ascending
+    RS_DROGUE = 3  # drogue deployed, falling
+    RS_MAIN = 4  # main parachute deployed, falling
+    RS_TOUCHDOWN = 5  # on the ground
 
 
 def _by_index(enum_cls: type[IntEnum]) -> dict[int, IntEnum]:
@@ -171,6 +194,7 @@ _PAYLOAD_LAYOUT: dict[MessagePayloadType, tuple[int | None, str | None]] = {
     MessagePayloadType.P_FVEC2: (8, "<2f"),
     MessagePayloadType.P_FVEC3: (12, "<3f"),
     MessagePayloadType.P_STRING: (None, None),
+    MessagePayloadType.P_ROCKET_STATE: (1, "<B"),
 }
 
 
@@ -195,6 +219,12 @@ def _decode_payload(payload_type: MessagePayloadType, raw: bytes) -> Any:
         return {"x": values[0], "y": values[1]}
     if payload_type is MessagePayloadType.P_FVEC3:
         return {"x": values[0], "y": values[1], "z": values[2]}
+    if payload_type is MessagePayloadType.P_ROCKET_STATE:
+        # The state's name; an ordinal this backend does not know yet stays a number.
+        try:
+            return RocketState(values[0]).name
+        except ValueError:
+            return values[0]
     return values[0]
 
 
@@ -213,10 +243,25 @@ def _encode_payload(payload_type: MessagePayloadType, value: Any) -> bytes:
         return struct.pack(fmt, x, y, z)  # type: ignore[arg-type]
     if payload_type is MessagePayloadType.P_BOOL:
         return struct.pack(fmt, bool(value))  # type: ignore[arg-type]
+    if payload_type is MessagePayloadType.P_ROCKET_STATE:
+        return struct.pack(fmt, _rocket_state(value))  # type: ignore[arg-type]
     try:
         return struct.pack(fmt, value)  # type: ignore[arg-type]
     except struct.error as exc:
         raise ProtocolError(f"cannot encode {value!r} as {payload_type.name}: {exc}") from exc
+
+
+def _rocket_state(value: Any) -> int:
+    """A RocketState by name (``"RS_BOOST"`` or ``"BOOST"``) or ordinal."""
+    if isinstance(value, str):
+        name = value.strip().upper()
+        for member in RocketState:
+            if name in (member.name, member.name.split("_", 1)[1]):
+                return member.value
+        raise ProtocolError(f"unknown rocket state {value!r}")
+    if isinstance(value, int) and 0 <= value <= 0xFF:
+        return value
+    raise ProtocolError(f"cannot encode {value!r} as a rocket state")
 
 
 def _vector(value: Any, arity: int) -> tuple[float, ...]:
@@ -253,7 +298,8 @@ class LogMessage:
                 f"frame too short: got {len(raw)} B, want at least {HEADER_SIZE} B"
             )
 
-        timestamp_us, flags = struct.unpack_from("<QH", raw, 0)
+        (timestamp_us,) = struct.unpack_from("<Q", raw, 0)
+        flags = int.from_bytes(raw[8:HEADER_SIZE], "little")
 
         payload_type = _lookup(
             _PAYLOAD_BY_INDEX, (flags >> _PAYLOAD_SHIFT) & _PAYLOAD_MASK, "payload type"
@@ -279,7 +325,9 @@ class LogMessage:
             | (self.src.index << _SRC_SHIFT)
             | (self.type.index << _TYPE_SHIFT)
         )
-        header = struct.pack("<QH", self.timestamp_us & 0xFFFFFFFFFFFFFFFF, flags)
+        header = struct.pack("<Q", self.timestamp_us & 0xFFFFFFFFFFFFFFFF) + flags.to_bytes(
+            FLAGS_SIZE, "little"
+        )
         return header + _encode_payload(self.payload_type, self.payload)
 
     def to_dict(self) -> dict[str, Any]:
@@ -310,4 +358,7 @@ def describe_enums() -> dict[str, list[dict[str, int | str]]]:
         "payload_types": entries(MessagePayloadType),
         "sources": entries(SourceSubsystem),
         "message_types": entries(MessageType),
+        "rocket_states": [
+            {"name": member.name, "index": member.value} for member in RocketState
+        ],
     }

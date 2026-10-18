@@ -1,0 +1,740 @@
+/*
+ * Launch Control view. Read at a glance, outdoors, on a laptop: very high
+ * contrast, big tabular numerals, and colour reserved for state (ok / warn /
+ * alarm) — telemetry itself is drawn in a single data hue.
+ */
+.starpi-lc {
+    /* Aliases of the brand tokens (brand/brand.css), which carry both themes. */
+    --lc-bg: var(--sp-bg);
+    --lc-panel: var(--sp-panel);
+    --lc-line: var(--sp-line);
+    --lc-grid: var(--sp-grid);
+    --lc-ink: var(--sp-ink);
+    --lc-ink-2: var(--sp-ink-2);
+    --lc-ink-3: var(--sp-ink-3);
+    --lc-data: var(--sp-data);
+    --lc-ok: var(--sp-ok);
+    --lc-warn: var(--sp-warn);
+    --lc-alarm: var(--sp-alarm);
+    --lc-font: var(--sp-font);
+    --lc-mono: var(--sp-mono);
+    --lc-ease: var(--sp-ease);
+
+    container-type: inline-size;
+    height: 100%;
+    overflow: auto;
+    background: var(--lc-bg);
+    color: var(--lc-ink);
+    font-family: var(--lc-font);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.starpi-lc *,
+.starpi-lc *::before,
+.starpi-lc *::after {
+    box-sizing: border-box;
+}
+
+.starpi-lc [hidden] {
+    display: none !important;
+}
+
+.starpi-lc h3,
+.starpi-lc p,
+.starpi-lc ol,
+.starpi-lc ul,
+.starpi-lc dl,
+.starpi-lc dd {
+    margin: 0;
+    padding: 0;
+}
+
+.starpi-lc ol,
+.starpi-lc ul {
+    list-style: none;
+}
+
+.lc-num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
+
+.lc-unit {
+    color: var(--lc-ink-3);
+    font-weight: 400;
+}
+
+/* --- grid: panels separated by hairlines, not boxed ------------------------- */
+
+.lc-grid {
+    display: grid;
+    gap: 1px;
+    min-height: 100%;
+    background: var(--lc-line);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+        "alert"
+        "head"
+        "primary"
+        "charts"
+        "gps"
+        "commands"
+        "attitude"
+        "log";
+}
+
+@container (min-width: 760px) {
+    .lc-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-areas:
+            "alert alert"
+            "head head"
+            "primary charts"
+            "gps commands"
+            "attitude log";
+    }
+}
+
+@container (min-width: 1240px) {
+    .lc-grid {
+        grid-template-columns: minmax(19rem, 22rem) minmax(0, 1fr) minmax(18rem, 21rem);
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            "alert alert alert"
+            "head head head"
+            "primary charts gps"
+            "attitude log commands";
+    }
+}
+
+.lc-alert { grid-area: alert; }
+.lc-head { grid-area: head; }
+.lc-primary { grid-area: primary; }
+.lc-charts { grid-area: charts; }
+.lc-gps { grid-area: gps; }
+.lc-attitude { grid-area: attitude; }
+.lc-log { grid-area: log; }
+.lc-commands { grid-area: commands; }
+
+.lc-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    padding: 16px 20px 20px;
+    background: var(--lc-panel);
+}
+
+.lc-title {
+    color: var(--lc-ink-2);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.lc-title--minor {
+    margin-top: 4px;
+}
+
+.lc-hint,
+.lc-empty {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+/* --- alert ---------------------------------------------------------------------- */
+
+.lc-alert {
+    padding: 10px 20px;
+    color: var(--lc-bg);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+/* Dark text on the state colour; beats the generic .is-* text colours below. */
+.starpi-lc .lc-alert.is-alarm { background: var(--lc-alarm); color: var(--lc-bg); }
+.starpi-lc .lc-alert.is-warn { background: var(--lc-warn); color: var(--lc-bg); }
+
+/* Light mode: white on the alarm red, dark on a banner-bright amber. */
+:root[data-theme="light"] .starpi-lc .lc-alert.is-alarm { color: var(--lc-panel); }
+:root[data-theme="light"] .starpi-lc .lc-alert.is-warn { background: oklch(0.85 0.15 80); color: var(--lc-ink); }
+
+/* --- header: clock, phases, link health ------------------------------------------ */
+
+.lc-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 16px 28px;
+    padding: 14px 20px;
+    background: var(--lc-bg);
+}
+
+.lc-brand {
+    display: flex;
+    align-items: center;
+    padding-right: 28px;
+    border-right: 1px solid var(--lc-line);
+}
+
+.lc-brand .sp-lockup {
+    font-size: 20px;
+}
+
+/* Narrow: the patch alone, the wordmark returns when there is room. */
+.lc-brand .sp-lockup__text {
+    display: none;
+}
+
+@container (min-width: 760px) {
+    .lc-brand .sp-lockup__text {
+        display: flex;
+    }
+}
+
+.lc-clock {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 11rem;
+}
+
+.lc-clock__label {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-clock__value {
+    font-size: 30px;
+    font-weight: 650;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+}
+
+.lc-phases {
+    display: flex;
+    flex: 1 1 32rem;
+    gap: 4px;
+    min-width: 0;
+}
+
+.lc-phase {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    padding: 8px 10px;
+    border-top: 3px solid var(--lc-grid);
+    color: var(--lc-ink-3);
+    transition: background-color 200ms var(--lc-ease), color 200ms var(--lc-ease), border-color 200ms var(--lc-ease);
+}
+
+.lc-phase__name {
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.lc-phase__time {
+    min-height: 1.3em;
+    font-size: 12px;
+}
+
+.lc-phase.is-done {
+    border-top-color: var(--lc-ink-3);
+    color: var(--lc-ink-2);
+}
+
+.lc-phase.is-current {
+    border-top-color: var(--lc-ink);
+    background: var(--lc-ink);
+    color: var(--lc-bg);
+}
+
+.lc-health {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 2px 20px;
+    align-content: center;
+}
+
+.lc-health > div {
+    display: flex;
+    flex-direction: column;
+}
+
+.lc-health dt {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-health dd {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.starpi-lc .is-ok { color: var(--lc-ok); }
+.starpi-lc .is-warn { color: var(--lc-warn); }
+.starpi-lc .is-alarm { color: var(--lc-alarm); }
+
+/* --- primary readouts ------------------------------------------------------------ */
+
+.lc-primary {
+    gap: 18px;
+}
+
+.lc-readout {
+    display: flex;
+    flex-direction: column;
+}
+
+.lc-readout__label {
+    color: var(--lc-ink-2);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.lc-readout__value {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 36px;
+    font-weight: 650;
+    line-height: 1.1;
+}
+
+.lc-readout__value .lc-unit {
+    font-size: 16px;
+}
+
+.lc-readout--hero .lc-readout__value {
+    font-size: 72px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+}
+
+.lc-readout--hero .lc-readout__value .lc-unit {
+    font-size: 22px;
+    letter-spacing: 0;
+}
+
+.lc-readout__note {
+    margin-top: 6px;
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-ground {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-top: 4px;
+}
+
+.starpi-lc.is-stale .lc-primary .lc-num,
+.starpi-lc .lc-num.is-stale {
+    color: var(--lc-ink-3);
+}
+
+/* One source gone quiet while the rest goes on: its last value, labelled. */
+.starpi-lc .lc-num.is-stale::after {
+    content: "stale";
+    margin-left: 0.5em;
+    color: var(--lc-warn);
+    font: 600 11px/1 var(--lc-font);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.lc-records {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--lc-line);
+}
+
+.lc-records dt {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-records dd {
+    font-size: 20px;
+    font-weight: 650;
+}
+
+.lc-records dd .lc-unit {
+    font-size: 13px;
+}
+
+.lc-records .lc-records__when {
+    color: var(--lc-ink-3);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+/* --- charts ------------------------------------------------------------------------- */
+
+.lc-charts {
+    position: relative;
+    gap: 10px;
+}
+
+.lc-chart {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 130px;
+}
+
+.lc-chart canvas {
+    display: block;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 110px;
+}
+
+.lc-charts > .lc-empty {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    padding: 8px 14px;
+    background: var(--lc-panel);
+    font-size: 14px;
+    transform: translate(-50%, -50%);
+}
+
+/* --- GPS ------------------------------------------------------------------------------- */
+
+.lc-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 12px;
+}
+
+/* Canvas over the offline map (basemap.js), both filling the same box so the
+   pad sits at the centre of each. */
+.lc-range {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 22rem;
+}
+
+/* .starpi-lc: MapLibre's stylesheet, loaded later, makes the map relative. */
+.lc-range canvas,
+.starpi-lc .lc-map {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Over the map, but under its credits (z-index 2 in MapLibre's stylesheet),
+   which stay clickable. */
+.lc-range canvas {
+    display: block;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.lc-map {
+    overflow: hidden;
+    border-radius: 4px;
+    background: var(--lc-bg);
+}
+
+/* Imagery is far brighter than the dark panel: dim it so the track stays readable. */
+:root:not([data-theme="light"]) .lc-map.is-satellite canvas {
+    filter: brightness(0.7) saturate(0.85);
+}
+
+/* Open MCT's styles leave MapLibre's control container relative and 0 px
+   tall, which puts the credits above the map. */
+.starpi-lc .lc-map .maplibregl-control-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.starpi-lc .lc-map .maplibregl-ctrl-attrib {
+    background: color-mix(in oklch, var(--lc-bg) 80%, transparent);
+    color: var(--lc-ink-3);
+    font-size: 10px;
+}
+
+.starpi-lc .lc-map .maplibregl-ctrl-attrib a {
+    color: var(--lc-ink-2);
+}
+
+.lc-toggle {
+    display: inline-flex;
+    border: 1px solid var(--lc-line);
+    border-radius: 4px;
+}
+
+.lc-toggle__option {
+    padding: 3px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--lc-ink-3);
+    font: 600 12px/1.3 var(--lc-font);
+    cursor: pointer;
+}
+
+.lc-toggle__option + .lc-toggle__option {
+    border-left: 1px solid var(--lc-line);
+}
+
+.lc-toggle__option:hover {
+    color: var(--lc-ink);
+}
+
+.lc-toggle__option[aria-pressed="true"] {
+    background: var(--lc-ink);
+    color: var(--lc-bg);
+}
+
+.lc-toggle__option:focus-visible {
+    outline: 2px solid var(--lc-data);
+    outline-offset: 1px;
+}
+
+.lc-pairs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+}
+
+.lc-pairs--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lc-pairs dt {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-pairs dd {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* --- attitude (rocket/rocket-view.js embedded, then the dials) ------------------ */
+
+.lc-rocket {
+    height: 18rem;
+}
+
+/* The dials right below already give the angles. */
+.starpi-lc .starpi-rocket .sr-angles {
+    display: none;
+}
+
+/* --- attitude dials ------------------------------------------------------------------------- */
+
+.lc-dials {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.lc-dial {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    align-items: center;
+}
+
+.lc-dial svg {
+    grid-row: span 2;
+    width: 44px;
+    height: 44px;
+}
+
+.lc-dial__face {
+    fill: none;
+    stroke: var(--lc-line);
+    stroke-width: 1.5;
+}
+
+.lc-dial__tick {
+    stroke: var(--lc-ink-3);
+    stroke-width: 1.5;
+}
+
+.lc-dial__needle {
+    stroke: var(--lc-data);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+}
+
+.lc-dial__hub {
+    fill: var(--lc-data);
+}
+
+.lc-dial__label {
+    color: var(--lc-ink-3);
+    font-size: 12.5px;
+}
+
+.lc-dial__value {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* --- log -------------------------------------------------------------------------------- */
+
+.lc-log__list {
+    /* A fixed, contained box: sized by its content, the log made every
+       readout update re-measure all its lines (~5 ms per render). */
+    height: 16rem;
+    contain: strict;
+    overflow-y: auto;
+    font-family: var(--lc-mono);
+    font-size: 12.5px;
+}
+
+.lc-log__list:empty {
+    display: none;
+}
+
+.lc-log__list li {
+    display: grid;
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    gap: 12px;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--lc-grid);
+}
+
+.lc-log__list time {
+    color: var(--lc-ink-3);
+}
+
+.lc-log__list span {
+    overflow-wrap: anywhere;
+}
+
+/* --- commands (commands/commands-panel.js, restyled to match) -------------------- */
+
+.starpi-lc .sp-cmd {
+    padding: 0;
+    overflow: visible;
+}
+
+.starpi-lc .sp-cmd__text p,
+.starpi-lc .sp-cmd__link,
+.starpi-lc .sp-cmd__history time,
+.starpi-lc .sp-cmd__empty {
+    color: var(--lc-ink-3);
+    opacity: 1;
+}
+
+.starpi-lc .sp-cmd__heading {
+    color: var(--lc-ink-2);
+    font-size: 13px;
+    opacity: 1;
+}
+
+.starpi-lc .sp-cmd__confirm { color: var(--lc-warn); }
+.starpi-lc .sp-cmd .is-ok { color: var(--lc-ok); }
+.starpi-lc .sp-cmd .is-alarm { color: var(--lc-alarm); }
+
+.starpi-lc .sp-cmd .c-button {
+    padding: 6px 14px;
+    border: 1px solid var(--lc-line);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--lc-ink);
+    font: 600 13px/1.3 var(--lc-font);
+}
+
+.starpi-lc .sp-cmd .c-button:hover:not(:disabled) {
+    border-color: var(--lc-ink-3);
+    background: var(--lc-grid);
+}
+
+.starpi-lc .sp-cmd .c-button:focus-visible {
+    outline: 2px solid var(--lc-data);
+    outline-offset: 2px;
+}
+
+.starpi-lc .sp-cmd .c-button:disabled {
+    color: var(--lc-ink-3);
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.starpi-lc .sp-cmd .sp-cmd__danger {
+    border-color: var(--lc-alarm);
+    background: var(--lc-alarm);
+    color: var(--lc-bg);
+}
+
+:root[data-theme="light"] .starpi-lc .sp-cmd .sp-cmd__danger {
+    color: var(--lc-panel);
+}
+
+/* --- buttons ------------------------------------------------------------------------ */
+
+.lc-button {
+    padding: 6px 14px;
+    border: 1px solid var(--lc-line);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--lc-ink);
+    font: 600 13px/1.3 var(--lc-font);
+    cursor: pointer;
+    transition: background-color 150ms var(--lc-ease), border-color 150ms var(--lc-ease);
+}
+
+.lc-button:hover:not(:disabled) {
+    border-color: var(--lc-ink-3);
+    background: var(--lc-grid);
+}
+
+.lc-button:active:not(:disabled) {
+    background: var(--lc-line);
+}
+
+.lc-button:focus-visible {
+    outline: 2px solid var(--lc-data);
+    outline-offset: 2px;
+}
+
+.lc-button:disabled {
+    color: var(--lc-ink-3);
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.lc-button--quiet {
+    padding: 4px 0;
+    border-color: transparent;
+    color: var(--lc-ink-2);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.lc-button--quiet:hover:not(:disabled) {
+    border-color: transparent;
+    background: transparent;
+    color: var(--lc-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lc-phase,
+    .lc-button {
+        transition: none;
+    }
+}

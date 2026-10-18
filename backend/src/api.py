@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -10,7 +11,7 @@ from typing import Any, AsyncIterator, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -43,7 +44,7 @@ class CommandRequest(BaseModel):
 
 
 class PacketPage(BaseModel):
-    total: int
+    total: int | None
     count: int
     limit: int
     offset: int
@@ -90,11 +91,14 @@ def create_app(station: Station | None = None) -> FastAPI:
     async def health(st: Station = Depends(get_station)) -> dict[str, Any]:
         return {
             "status": "ok",
+            "run": st.run,
+            "rocket_time": st.rocket_time(),
             "links": st.link_status(),
             "websocket_clients": st.hub.subscriber_count,
             "dropped_events": st.hub.dropped_events,
             "decode_errors": st.decode_errors,
             "store_errors": st.store_errors,
+            "storage": st.storage_status(),
         }
 
     @app.get("/api/enums", tags=["meta"])
@@ -125,8 +129,20 @@ def create_app(station: Station | None = None) -> FastAPI:
         ),
         since_us: int | None = Query(None, description="Only packets at/after this µs timestamp"),
         until_us: int | None = Query(None, description="Only packets at/before this µs timestamp"),
+        after_id: int | None = Query(
+            None,
+            description="Keyset paging: the id of the previous page's last packet, whose"
+            " timestamp is passed as `since_us` (asc) or `until_us` (desc). Returns the packets"
+            " after it. Prefer it to `offset`, whose cost grows with every page.",
+        ),
         order: Literal["asc", "desc"] = Query("desc"),
-    ) -> PacketPage:
+        with_total: bool = Query(
+            True,
+            description="Count every matching packet into `total`. The count costs as much as"
+            " the page itself, so a client paging through history can turn it off and"
+            " stop at the first short page instead; `total` is then null.",
+        ),
+    ) -> Response:
         src_mask = _mask(src, resolve_source)
         type_mask = _mask(type, resolve_message_type)
         payload_mask = _mask(payload_type, resolve_payload_type)
@@ -138,18 +154,61 @@ def create_app(station: Station | None = None) -> FastAPI:
             "links": _links(link),
             "since_us": since_us,
             "until_us": until_us,
+            "after_id": after_id,
         }
-        packets = await st.db.query_packets(limit=limit, offset=offset, order=order, **filters)
-        total = await st.db.count_packets(**filters)
-        return PacketPage(
-            total=total, count=len(packets), limit=limit, offset=offset, packets=packets
+        packets = await st.db.query_packets_json(
+            limit=limit, offset=offset, order=order, **filters
         )
+        total = (
+            await st.db.count_packets(ascending=order == "asc", **filters) if with_total else None
+        )
+        # The packets arrive as JSON text from SQLite: splice them in rather
+        # than parse them only to encode them again.
+        body = (
+            f'{{"total":{json.dumps(total)},"count":{len(packets)},"limit":{limit},'
+            f'"offset":{offset},"packets":[{",".join(packets)}]}}'
+        )
+        return Response(body, media_type="application/json")
 
     @app.get("/api/packets/latest", tags=["packets"])
     async def latest_packets(st: Station = Depends(get_station)) -> dict[str, Any]:
         """The most recent packet of each message type."""
         packets = await st.db.latest_per_type()
         return {"packets": packets, "by_type": {p["type"]: p for p in packets}}
+
+    @app.get("/api/packets/minmax", tags=["packets"])
+    async def minmax_packets(
+        st: Station = Depends(get_station),
+        type: str = Query(..., description="Message type"),
+        field: str | None = Query(
+            None,
+            pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
+            description="Payload field to take the extremes of (x, y, z...); omit for a scalar payload",
+        ),
+        since_us: int = Query(..., description="Start of the range, µs"),
+        until_us: int = Query(..., description="End of the range, µs"),
+        points: int = Query(1000, ge=2, le=config.max_page_size, description="Roughly how many packets to return"),
+    ) -> Response:
+        """Packets of one type reduced for a plot: Open MCT's "minmax" strategy.
+
+        The range is cut into `points / 2` equal buckets, and each contributes
+        its packets with the lowest and the highest `field`, oldest first.
+        Peaks survive however long the range is.
+        """
+        if until_us < since_us:
+            raise HTTPException(status_code=400, detail="until_us is before since_us")
+        type_mask = _mask([type], resolve_message_type)
+        packets = await st.db.query_packets_minmax(
+            type_mask=type_mask,
+            field=field,
+            since_us=since_us,
+            until_us=until_us,
+            buckets=max(1, points // 2),
+        )
+        return Response(
+            f'{{"count":{len(packets)},"packets":[{",".join(packets)}]}}',
+            media_type="application/json",
+        )
 
     @app.get("/api/packets/{packet_id}", tags=["packets"])
     async def get_packet(packet_id: int, st: Station = Depends(get_station)) -> dict[str, Any]:
@@ -232,6 +291,7 @@ def create_app(station: Station | None = None) -> FastAPI:
                 {
                     "event": "hello",
                     "data": {
+                        "run": st.run,
                         "links": st.link_status(),
                         "enums": describe_enums(),
                         "commands": st.available_commands(),

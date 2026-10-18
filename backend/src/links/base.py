@@ -1,8 +1,8 @@
 """Transport-agnostic link interface.
 
-A *link* is one physical path to the rocket. Today that is Bluetooth LE; LoRa
-is expected to join it, so nothing above this layer may assume BLE. A link
-only moves bytes: framing and decoding live in :mod:`protocol`.
+A *link* is one physical path to the rocket: Bluetooth LE or LoRa today, so
+nothing above this layer may assume either. A link only moves bytes: framing
+and decoding live in :mod:`protocol`.
 """
 
 from __future__ import annotations
@@ -48,6 +48,33 @@ class CommandSpec:
         return {"name": self.name, "description": self.description, "params": self.params}
 
 
+# Every command the rocket takes, with its id: one byte on the wire, the same
+# on every link. Mirrors ``enum LoRaCommand`` in the firmware's ``lora.h``
+# (0 is ``CMD_NONE``), which is where a new command has to be added first.
+COMMAND_IDS = {
+    "eject_a": 0x01,
+    "eject_c": 0x02,
+    "cut_main": 0x03,
+    "cameras_on": 0x04,
+    "cameras_off": 0x05,
+    "sensor_calibration": 0x06,
+}
+
+#: What each of them does, for the links that offer them.
+ROCKET_COMMANDS = {
+    spec.name: spec
+    for spec in (
+        CommandSpec("eject_a", "Fire ejection charge A."),
+        CommandSpec("eject_c", "Fire ejection charge C."),
+        CommandSpec("cut_main", "Fire the main parachute cutter."),
+        CommandSpec("cameras_on", "Turn the on-board cameras on."),
+        CommandSpec("cameras_off", "Turn the on-board cameras off."),
+        CommandSpec("sensor_calibration", "Trigger the on-board sensor calibration routine."),
+    )
+}
+assert ROCKET_COMMANDS.keys() == COMMAND_IDS.keys()
+
+
 class Link(abc.ABC):
     """Base class for a bidirectional link to the rocket."""
 
@@ -79,7 +106,8 @@ class Link(abc.ABC):
         :class:`UnknownCommand` for a name outside :meth:`supported_commands`,
         :class:`BadCommand` for arguments it will not accept, and
         :class:`LinkError` when the command is valid but cannot be delivered.
-        Returning normally means the bytes really went out.
+        Returning normally means the bytes really went out (on LoRa: were
+        handed to the program that drives the radio).
         """
 
     @abc.abstractmethod

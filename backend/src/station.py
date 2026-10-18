@@ -3,26 +3,50 @@
 Ingest path for every frame, regardless of transport::
 
     Link -> Station.on_frame -> protocol.decode -> SQLite -> Hub -> websockets
+
+Frames are decoded and broadcast as they arrive, then stored in batches: a
+single writer task saves everything that queued up since its previous batch,
+at most every WRITE_INTERVAL_S. The live stream never waits for the disk: on
+the Pi's SD card a commit or WAL checkpoint can take half a second. Packet ids
+are handed out here, continuing the table's own sequence, so a packet has its
+id before it is stored.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
+import os
+import time
 from typing import Any
 
 from config import Config, config as default_config
-from db import Database
+from db import Database, now_us, run_path
 from hub import Hub
 from links import Link, LinkError, UnknownCommand, UnknownLink, create_link
 from protocol import LogMessage, ProtocolError
 
 log = logging.getLogger(__name__)
 
+#: With two links up the same moment of the flight arrives twice, later on the
+#: slower one (LoRa). A packet up to this much older than the newest heard does
+#: not set the rocket's clock back; an older one does: the rocket restarted.
+CLOCK_STEP_BACK_US = 5_000_000
+
+#: Minimum time between two packet batches, in seconds. Every commit rewrites
+#: whole pages of the table and its indexes, so committing as packets came
+#: in (~50 times a second) wrote ~3 MB/s to the SD card for ~45 kB/s of data.
+#: Only storage waits for it, not the live stream.
+WRITE_INTERVAL_S = 0.5
+
 
 class Station:
     def __init__(self, cfg: Config | None = None) -> None:
         self.config = cfg or default_config
-        self.db = Database(self.config.db_path)
+        # A new file every run (see run_path): the frontend tells runs apart by its name.
+        self.db = Database(run_path(self.config.db_path))
+        self.run = os.path.basename(self.db.path)
         self.hub = Hub(self.config.live_buffer_size)
         self.links: dict[str, Link] = {}
         #: Frames that arrived but could not be decoded.
@@ -31,12 +55,31 @@ class Station:
         #: from decode errors: a storage outage is a different fault to a bad
         #: frame, and /api/health reports them separately.
         self.store_errors = 0
+        #: Findings of the startup integrity check: None while it runs, []
+        #: when the database file is sound.
+        self.storage_problems: list[str] | None = None
+        self._storage_check: asyncio.Task[None] | None = None
+        # Published packets waiting for the writer, and their raw frames.
+        self._pending: list[dict[str, Any]] = []
+        self._pending_raw: list[bytes] = []
+        self._next_id = 1
+        # The rocket's clock: the newest packet's timestamp, and when it came
+        # (time.monotonic()). The frontend's time reference.
+        self._rocket_time: tuple[int, float] | None = None
+        self._pending_ready = asyncio.Event()
+        self._writer: asyncio.Task[None] | None = None
+        self._stopping = False
 
     # --- lifecycle ---------------------------------------------------------
 
     async def start(self) -> None:
         await self.db.connect()
-        log.info("storage ready at %s", self.config.db_path)
+        log.info("storage ready at %s", self.db.path)
+        self._next_id = await self.db.next_packet_id()
+        self._stopping = False
+        self._writer = asyncio.create_task(self._write_loop(), name="packet-writer")
+        self.storage_problems = None
+        self._storage_check = asyncio.create_task(self._check_storage(), name="storage-check")
 
         for name in self.config.links:
             try:
@@ -60,12 +103,57 @@ class Station:
             except Exception:  # noqa: BLE001
                 log.exception("link %r failed to stop cleanly", link.name)
         self.links.clear()
+        if self._storage_check is not None:
+            self._storage_check.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._storage_check
+            self._storage_check = None
+        if self._writer is not None:
+            # Not cancelled: a batch cut off mid-write would be lost. The
+            # writer drains the queue and returns once it sees the flag.
+            self._stopping = True
+            self._pending_ready.set()
+            await self._writer
+            self._writer = None
         await self.db.close()
+
+    async def _check_storage(self) -> None:
+        """Check the database file once, in the background.
+
+        A corrupt file still takes inserts but fails the history queries that
+        reach its bad pages, which the frontend only sees as HTTP 500s; this
+        says why, in the log and in /api/health. Not awaited in start(): the
+        check reads the whole file, and ingest must not wait for it.
+        """
+        try:
+            problems = await self.db.quick_check()
+        except Exception as exc:  # noqa: BLE001 - a file too damaged to check
+            problems = [f"check failed: {exc}"]
+        self.storage_problems = problems
+        if problems:
+            log.error(
+                "database %s is corrupt, history queries may fail: %s",
+                self.db.path, "; ".join(problems[:5]),
+            )
+        else:
+            log.info("database %s passed its integrity check", self.db.path)
+
+    def rocket_time(self) -> dict[str, int] | None:
+        """The rocket's clock as last heard, and how long ago: None before any packet."""
+        if self._rocket_time is None:
+            return None
+        timestamp_us, at = self._rocket_time
+        return {"timestamp_us": timestamp_us, "age_us": int((time.monotonic() - at) * 1_000_000)}
+
+    def storage_status(self) -> dict[str, Any]:
+        problems = self.storage_problems
+        state = "checking" if problems is None else "corrupt" if problems else "ok"
+        return {"state": state, "problems": problems or []}
 
     # --- ingest ------------------------------------------------------------
 
     async def on_frame(self, link_name: str, frame: bytes) -> None:
-        """Decode, persist and broadcast one raw frame."""
+        """Decode and broadcast one raw frame, and queue it for storage."""
         try:
             message = LogMessage.from_bytes(frame)
         except ProtocolError as exc:
@@ -76,15 +164,47 @@ class Station:
             )
             return
 
-        try:
-            record = await self.db.insert_packet(message, link_name, frame)
-        except Exception:  # noqa: BLE001 - never lose the live stream over a write error
-            self.store_errors += 1
-            log.exception("failed to persist packet from %s", link_name)
-            record = message.to_dict()
-            record.update({"id": None, "link": link_name, "received_at_us": None})
-
+        newest = self._rocket_time[0] if self._rocket_time is not None else 0
+        if not newest - CLOCK_STEP_BACK_US < message.timestamp_us < newest:
+            self._rocket_time = (message.timestamp_us, time.monotonic())
+        record = message.to_dict()
+        record.update({"id": self._next_id, "link": link_name, "received_at_us": now_us()})
+        self._next_id += 1
         self.hub.publish({"event": "packet", "data": record})
+        self._pending.append(record)
+        self._pending_raw.append(frame)
+        self._pending_ready.set()
+
+    async def _write_loop(self) -> None:
+        loop = asyncio.get_running_loop()
+        while not self._stopping:
+            await self._pending_ready.wait()
+            started = loop.time()
+            self._pending_ready.clear()
+            await self._flush()
+            # Let the next batch collect for the rest of the interval. Not
+            # after stop(): the final flush below takes whatever is left.
+            if not self._stopping:
+                await asyncio.sleep(max(0.0, started + WRITE_INTERVAL_S - loop.time()))
+        await self._flush()  # anything that queued during the last batch
+
+    async def _flush(self) -> None:
+        """Store every queued packet, in arrival order."""
+        batch, self._pending = self._pending, []
+        raws, self._pending_raw = self._pending_raw, []
+        if not batch:
+            return
+        try:
+            await self.db.insert_packets(batch, raws)
+        except Exception:  # noqa: BLE001 - the live stream already has them
+            self.store_errors += len(batch)
+            log.exception("failed to persist %d packets", len(batch))
+            # If something else wrote to the table, our ids now collide with
+            # its rows: move past them, or every later batch fails too.
+            try:
+                self._next_id = max(self._next_id, await self.db.next_packet_id())
+            except Exception:  # noqa: BLE001 - the next failure retries
+                pass
 
     # --- commands ----------------------------------------------------------
 

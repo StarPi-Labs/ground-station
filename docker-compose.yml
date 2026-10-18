@@ -1,26 +1,63 @@
-version: '3.7'
 services:
-  apache:
-    build: apache
+  backend:
+    # Named so an image built elsewhere (make deploy) runs here without a rebuild.
+    image: starpi/gs-backend:latest
+    build: backend
+    restart: unless-stopped
+    environment:
+      SP_LINKS: ${SP_LINKS:-ble}
+      SP_DB_PATH: ${SP_DB_PATH:-/data/starpi.db}
+      SP_SIM_RATE: ${SP_SIM_RATE:-350}
+      SP_PAD_LAT: ${SP_PAD_LAT:-39.392547}
+      SP_PAD_LON: ${SP_PAD_LON:--8.289517}
+      SP_PAD_ALTITUDE_M: ${SP_PAD_ALTITUDE_M:-160}
+      # radio_app's sockets, in the directory mounted below.
+      SP_LORA_TLM_SOCKET: /run/starpi/starpi_tlm.sock
+      SP_LORA_CMD_SOCKET: /run/starpi/starpi_cmd.sock
+    volumes:
+      # BlueZ is reached over the host's D-Bus (run scripts/setup-bluetooth.sh first).
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+      - ./backend/data:/data
+      # LoRa: radio_app (the radio service below, or run on the host as
+      # `radio_app <dir>`) creates its sockets in this directory. The directory
+      # is mounted, not the socket files: they are created anew every time
+      # radio_app starts.
+      - ${LORA_SOCKET_DIR:-./run}:/run/starpi
     ports:
-      - '8040:80'
+      - '${BACKEND_PORT:-8000}:8000'
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  apache:
+    image: starpi/gs-apache:latest
+    build:
+      context: apache
+      additional_contexts:
+        site: openmct
+    restart: unless-stopped
+    ports:
+      - '${FRONTEND_PORT:-8040}:80'
+    depends_on:
+      - backend
+
+  # The LoRa radio: radio_app (radio/), on the Pi's SPI bus. Only with the
+  # lora profile (`make up SP_LINKS=ble,lora` turns it on), since it needs the
+  # radio's devices.
+  radio:
+    profiles: [lora]
+    image: starpi/gs-radio:latest
+    build: radio
+    restart: unless-stopped
+    devices:
+      - /dev/spidev0.0
+      - /dev/gpiochip0
     volumes:
-      - openmct-dist:/usr/local/apache2/htdocs/openmct
-    networks:
-      - docker_openmct_link
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-  openmct:
-    build: openmct
-    volumes:
-      - openmct-dist:/openmct/site
-    networks:
-      - docker_openmct_link
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-volumes:
-  openmct-dist:
-networks:
-  docker_openmct_link:
-    name: docker_openmct_link
-    driver: bridge
+      - ${LORA_SOCKET_DIR:-./run}:/run/starpi
+    logging:
+      # radio_app prints its protocol state on every pass.
+      options:
+        max-size: 5m
+        max-file: '2'

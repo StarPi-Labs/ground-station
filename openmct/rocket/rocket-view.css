@@ -1,0 +1,194 @@
+/*
+ * Rocket attitude view. The 3D canvas fills the frame; readouts sit on top
+ * and let the pointer through to it, so the whole frame can be dragged.
+ */
+.starpi-rocket {
+    --sr-ink: var(--sp-ink);
+    --sr-ink-3: var(--sp-ink-3);
+    --sr-chip: color-mix(in oklch, var(--sp-grid) 85%, transparent);
+    --sr-active: oklch(0.8 0.15 65);
+    --sr-apogee: oklch(0.83 0.09 230);
+    --sr-descent: oklch(0.66 0.13 250);
+    --sr-ok: oklch(0.72 0.14 150);
+    --sr-warn: oklch(0.85 0.15 80);
+    --sr-mono: var(--sp-mono);
+    --sr-axis-x: var(--sp-axis-x);
+    --sr-axis-y: var(--sp-axis-y);
+    --sr-axis-z: var(--sp-axis-z);
+    --sr-halo: var(--sp-bg);
+
+    container-type: inline-size;
+    position: relative;
+    height: 100%;
+    min-height: 120px;
+    overflow: hidden;
+    color: var(--sr-ink);
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+.starpi-rocket .sr-canvas {
+    position: absolute;
+    inset: 0;
+    cursor: grab;
+    touch-action: none;
+}
+
+.starpi-rocket .sr-canvas:active {
+    cursor: grabbing;
+}
+
+.starpi-rocket canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Axis letters: the scene moves each one over the end of its axis. */
+.starpi-rocket .sr-axes {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.starpi-rocket .sr-axis {
+    position: absolute;
+    top: 0;
+    left: 0;
+    translate: -50% -50%;
+    font-family: var(--sr-mono);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    /* Keeps the letter readable where it crosses the model or the grid. */
+    text-shadow: 0 0 2px var(--sr-halo), 0 0 2px var(--sr-halo), 0 0 4px var(--sr-halo);
+    will-change: transform;
+}
+
+.starpi-rocket .sr-axis[data-axis="x"] {
+    color: var(--sr-axis-x);
+}
+
+.starpi-rocket .sr-axis[data-axis="y"] {
+    color: var(--sr-axis-y);
+}
+
+.starpi-rocket .sr-axis[data-axis="z"] {
+    color: var(--sr-axis-z);
+}
+
+.starpi-rocket .sr-overlay {
+    position: absolute;
+    inset: 6px 6px auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 6px;
+    pointer-events: none;
+}
+
+.starpi-rocket .sr-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.starpi-rocket .sr-chip {
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--sr-chip);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.starpi-rocket .sr-chip[hidden] {
+    display: none;
+}
+
+/* State colours match the dashboard's phase widget. */
+.starpi-rocket .sr-chip[data-phase="BOOST"],
+.starpi-rocket .sr-chip[data-phase="COAST"] {
+    background: var(--sr-active);
+    color: #15171a;
+}
+
+.starpi-rocket .sr-chip[data-phase="DROGUE"] {
+    background: var(--sr-apogee);
+    color: #15171a;
+}
+
+.starpi-rocket .sr-chip[data-phase="MAIN"] {
+    background: var(--sr-descent);
+    color: oklch(0.97 0.004 250);
+}
+
+.starpi-rocket .sr-chip[data-phase="TOUCHDOWN"] {
+    background: var(--sr-ok);
+    color: #15171a;
+}
+
+.starpi-rocket .sr-chip--warn {
+    background: var(--sr-warn);
+    color: #15171a;
+}
+
+.starpi-rocket .sr-angles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 10px;
+    margin: 0;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--sr-chip);
+    font-family: var(--sr-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.starpi-rocket .sr-angles div {
+    display: flex;
+    gap: 4px;
+}
+
+.starpi-rocket .sr-angles dt {
+    color: var(--sr-ink-3);
+}
+
+.starpi-rocket .sr-angles dd {
+    min-width: 5.5ch;
+    margin: 0;
+    text-align: right;
+}
+
+.starpi-rocket .sr-hint,
+.starpi-rocket .sr-message {
+    position: absolute;
+    margin: 0;
+    pointer-events: none;
+}
+
+.starpi-rocket .sr-hint {
+    inset: auto 6px 4px;
+    color: var(--sr-ink-3);
+    font-size: 11px;
+}
+
+.starpi-rocket .sr-message {
+    inset: 50% 12px auto;
+    transform: translateY(-50%);
+    text-align: center;
+    color: var(--sr-ink-3);
+}
+
+.starpi-rocket .sr-message[hidden] {
+    display: none;
+}
+
+/* Small frames (the dashboard): the model needs the room; the tooltip keeps the hint. */
+@container (max-width: 260px) {
+    .starpi-rocket .sr-hint {
+        display: none;
+    }
+}
