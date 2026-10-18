@@ -27,6 +27,9 @@
     // Sources shown only as their latest value (see ingest()): their history
     // would be up to 90 000 packets per load, for one number each.
     const LATEST_ONLY = new Set(['gyro', 'orient', 'pressure', 'temp']);
+    // Logged once, at calibration (maybe before GPS set the rocket's clock):
+    // shown however old it is.
+    const ANY_AGE = new Set(['temp']);
 
     // Readouts by the source they show: marked stale when it stops arriving
     // while others go on (the long-range link carries only some of them).
@@ -433,7 +436,7 @@
                         Object.assign(options, { strategy: 'latest', size: 1 });
                     }
                     let data = await this.openmct.telemetry.request(object, options);
-                    if (LATEST_ONLY.has(name)) {
+                    if (LATEST_ONLY.has(name) && !ANY_AGE.has(name)) {
                         // 'latest' looks back past the window's start; the view does not.
                         data = data.filter((datum) => datum.utc >= bounds.start);
                     }
