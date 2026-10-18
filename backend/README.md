@@ -64,7 +64,7 @@ temperature at start and after each `sensor_calibration` (the only time the
 firmware logs temperature), and each command it receives as `T_SYSLOG`. Like
 the firmware's BLE queue, each batch goes out newest first. Its timestamps
 count from the moment it started, like a rocket whose clock GPS has not set,
-until GPS sets it: `SP_SIM_GPS_CLOCK_S` (30 by default, 0 for never) seconds
+until GPS sets it: `SP_SIM_GPS_CLOCK_S` (10 by default, before the first launch; 0 for never) seconds
 in, the clock jumps to UTC.
 
 `SP_LINKS=sim-ble,sim-lora` (`make sim2` at the top level) flies that same
@@ -105,7 +105,7 @@ All settings come from environment variables.
 | `SP_LORA_CMD_SOCKET` | `/tmp/starpi_cmd.sock` | `radio_app`'s command socket (`/run/starpi/starpi_cmd.sock` under Compose) |
 | `SP_LORA_RECONNECT_DELAY` | `2` | Delay between attempts to reach `radio_app`, seconds |
 | `SP_SIM_RATE` | `350` | Packets per second sent by the `sim` link |
-| `SP_SIM_GPS_CLOCK_S` | `30` | Seconds after start when the simulated rocket's clock jumps to UTC, as when GPS sets it; `0` never |
+| `SP_SIM_GPS_CLOCK_S` | `10` | Seconds after start when the simulated rocket's clock jumps to UTC, as when GPS sets it; `0` never |
 | `SP_MAX_PAGE_SIZE` | `1000` | Upper bound on `limit` |
 | `SP_LIVE_BUFFER` | `200` | Packets kept for websocket backfill |
 | `SP_SERVE_WEB` | `false` | Serve the bundled dashboard at `/` (else `/` redirects to `/docs`) |

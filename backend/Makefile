@@ -38,7 +38,7 @@ run-sim:
 		-e SP_LINKS=sim \
 		-e SP_DB_PATH=/data/simulator.db \
 		-e SP_SIM_RATE=$(or $(SP_SIM_RATE),350) \
-		-e SP_SIM_GPS_CLOCK_S=$(or $(SP_SIM_GPS_CLOCK_S),30) \
+		-e SP_SIM_GPS_CLOCK_S=$(or $(SP_SIM_GPS_CLOCK_S),10) \
 		-e SP_SERVE_WEB=true \
 		-it \
 		$(TAG):$(VERSION)

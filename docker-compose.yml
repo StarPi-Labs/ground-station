@@ -8,7 +8,7 @@ services:
       SP_LINKS: ${SP_LINKS:-ble}
       SP_DB_PATH: ${SP_DB_PATH:-/data/starpi.db}
       SP_SIM_RATE: ${SP_SIM_RATE:-350}
-      SP_SIM_GPS_CLOCK_S: ${SP_SIM_GPS_CLOCK_S:-30}
+      SP_SIM_GPS_CLOCK_S: ${SP_SIM_GPS_CLOCK_S:-10}
       SP_PAD_LAT: ${SP_PAD_LAT:-39.392547}
       SP_PAD_LON: ${SP_PAD_LON:--8.289517}
       SP_PAD_ALTITUDE_M: ${SP_PAD_ALTITUDE_M:-160}
