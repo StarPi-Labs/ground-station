@@ -243,8 +243,7 @@ def _rocket_clock_us(at: float) -> int:
 def _float16(value: float) -> float | None:
     """``value`` as it comes out of a LoRa packet's 16-bit float.
 
-    Past 65504 the firmware's float16 is infinite, which radio_app sends as
-    null: pressure in Pa always is.
+    Past 65504 the firmware's float16 is infinite, which radio_app sends as null.
     """
     try:
         return struct.unpack("<e", struct.pack("<e", value))[0]
@@ -592,8 +591,9 @@ class SimLoRaLink(LoRaLink):
                 "dt_ms": -LORA_AGE_MS["imu"],
             },
             "baro": {
-                "p1": _float16(_pressure_pa(PAD_ALTITUDE_M + altitude)),
-                "p2": _float16(_pressure_pa(PAD_ALTITUDE_M + altitude) + 30.0),
+                # In hPa, as the firmware sends them (Pa would overflow).
+                "p1": _float16(_pressure_pa(PAD_ALTITUDE_M + altitude) / 100.0),
+                "p2": _float16((_pressure_pa(PAD_ALTITUDE_M + altitude) + 30.0) / 100.0),
                 "dt_ms": -LORA_AGE_MS["baro"],
             },
             "gps": {"latitude": lat, "longitude": lon, "dt_ms": -LORA_AGE_MS["gps"]},

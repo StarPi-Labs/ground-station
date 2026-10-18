@@ -17,17 +17,17 @@ wire bytes as on BLE:
     LoRa field                    message type      source  payload
     ============================  ================  ======  ==================
     imu.altitude, imu.vspeed      T_FILTER_STATE       S_IMU   P_FVEC2 m, m/s
-    baro.p1, baro.p2              T_PRESSURE        S_BARO  P_FVEC2 Pa, Pa
+    baro.p1, baro.p2 (hPa) × 100  T_PRESSURE        S_BARO  P_FVEC2 Pa, Pa
     gps.latitude, gps.longitude   T_GPS             S_GPS   P_FVEC2 degrees
     state & 0x7f                  T_ROCKET_STATE    S_PARA  P_ROCKET_STATE
     ============================  ================  ======  ==================
 
 Values and units are the firmware's, as on BLE, but altitude, speed and
 pressure travel as float16: 11 significant bits, so altitude comes in 1 m
-steps above 1024 m, 2 m above 2048 m. Pressure is in Pa and float16 ends at
-65504: a rocket below ~3.5 km sends infinity, which radio_app passes as null
-and this link skips, so over LoRa there is no pressure until the firmware
-changes its scale.
+steps above 1024 m, 2 m above 2048 m. Pressure is the exception to the
+firmware's units: it logs Pa, which overflows float16 (max 65504), so the
+LoRa packet carries hPa and this link converts back to Pa, as over BLE. Around
+1000 hPa a float16 step is 0.5 hPa, so LoRa pressure comes in 50 Pa steps.
 ``imu.attitude`` (tilt from vertical), bit 7 of ``state`` (the system is
 armed) and ``sensor_status`` (bit 0 IMU healthy, bit 1 barometers healthy)
 have no ``LogMessage`` equivalent and are only reported in
@@ -71,13 +71,15 @@ COMMAND_TIMEOUT_S = 2.0
 #: radio_app's lines are a few hundred bytes; a longer one is not its protocol.
 MAX_LINE = 64 * 1024
 
-# group -> (keys of its values, message type, source). In the firmware
+# group -> (keys of its values, message type, source, factor to the firmware's
+# logged unit). In the firmware
 # T_FILTER_STATE is logged by both the IMU and the barometer task and the packet
 # does not say which wrote last; it keeps the values in its ``imu`` group.
-GROUPS: dict[str, tuple[tuple[str, str], MessageType, SourceSubsystem]] = {
-    "imu": (("altitude", "vspeed"), MessageType.T_FILTER_STATE, SourceSubsystem.S_IMU),
-    "baro": (("p1", "p2"), MessageType.T_PRESSURE, SourceSubsystem.S_BARO),
-    "gps": (("latitude", "longitude"), MessageType.T_GPS, SourceSubsystem.S_GPS),
+# The packet's pressures are hPa (Pa would overflow its float16): back to Pa.
+GROUPS: dict[str, tuple[tuple[str, str], MessageType, SourceSubsystem, float]] = {
+    "imu": (("altitude", "vspeed"), MessageType.T_FILTER_STATE, SourceSubsystem.S_IMU, 1.0),
+    "baro": (("p1", "p2"), MessageType.T_PRESSURE, SourceSubsystem.S_BARO, 100.0),
+    "gps": (("latitude", "longitude"), MessageType.T_GPS, SourceSubsystem.S_GPS, 1.0),
 }
 # Groups the rocket has not filled yet are all zeros: no pressure reading, no
 # GPS fix. Altitude 0 m at 0 m/s is a real reading (the pad), so not "imu".
@@ -252,13 +254,15 @@ class LoRaLink(Link):
         self._median_bps = packet.get("median_bps")
 
         frames: list[LogMessage] = []
-        for group, (keys, msg_type, src) in GROUPS.items():
+        for group, (keys, msg_type, src, factor) in GROUPS.items():
             fields = packet[group]
             values = tuple(fields[key] for key in keys)
             if any(value is None for value in values):
                 continue  # not a finite number: nothing honest to store
             if group in ZERO_MEANS_UNSET and not any(values):
                 continue
+            if factor != 1.0:
+                values = tuple(value * factor for value in values)
             # dt is in ms from the transmit time, on the rocket's clock. The
             # firmware re-bases it at every transmission, so a value that was
             # not refreshed since the previous packet is stamped later than it

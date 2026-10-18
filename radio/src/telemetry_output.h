@@ -30,7 +30,7 @@
 //
 //      {"type":"data","id":252,"number":17,"tx_time_ms":1789583292713,"state":130,"sensor_status":3,
 //       "imu":{"altitude":812.5,"vspeed":95.25,"attitude":3.5,"dt_ms":-12},
-//       "baro":{"p1":null,"p2":null,"dt_ms":-31},
+//       "baro":{"p1":921.5,"p2":921.0,"dt_ms":-31},
 //       "gps":{"latitude":39.392547,"longitude":-8.289517,"dt_ms":-180},
 //       "rssi_dbm":-87.5,"median_bps":2140.0}
 //
@@ -42,8 +42,8 @@
 //    state:      RocketState ordinal (logger.h) in bits 0-6; bit 7 is set
 //                while the system is armed
 //    sensor_status: bit 0 set when the IMU is healthy, bit 1 the barometers
-//    altitude m, vspeed m/s, attitude degrees from vertical, p1/p2 Pa (above
-//    65504 Pa float16 overflows and they arrive as null),
+//    altitude m, vspeed m/s, attitude degrees from vertical, p1/p2 hPa (the
+//    flight computer logs Pa, which would overflow float16),
 //    latitude/longitude degrees: the float16 fields already converted. A value
 //    that is not finite is sent as null.
 //    dt_ms:      when the group was last updated, relative to tx_time_ms: the
