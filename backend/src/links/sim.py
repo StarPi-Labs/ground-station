@@ -252,7 +252,8 @@ def _float16(value: float) -> float | None:
 
 
 # The rocket's commands over the simulated BLE (none that needs an argument,
-# as on the real BLE). Only arm and disarm do something: the armed flag below.
+# as on the real BLE). Only arm and disarm do something: the armed flag below,
+# which also refuses a calibration.
 COMMANDS = {
     name: CommandSpec(name, f"{spec.description} Simulated.", spec.params)
     for name, spec in ROCKET_COMMANDS.items()
@@ -265,7 +266,8 @@ class SimRocket:
 
     Armed at start, like the firmware today (``system_armed = true``, a FIXME
     there). The flight is scripted, so being disarmed does not keep it on the
-    pad: the flag only shows in the LoRa state byte, as on the real rocket.
+    pad: the flag shows in the LoRa state byte and refuses a calibration, as
+    on the real rocket.
     """
 
     armed = True
@@ -521,7 +523,9 @@ class SimLink(Link):
         now = time.monotonic()
         await self._emit(self._syslog(self._timestamp_us(now), f"Received command: {name.upper()}").to_bytes())
         if name == "sensor_calibration":
-            if rocket_state((now - self._t0) % FLIGHT_CYCLE_S) is RocketState.RS_IDLE:
+            # As the firmware: only on the ramp and disarmed, with one message for both refusals.
+            idle = rocket_state((now - self._t0) % FLIGHT_CYCLE_S) is RocketState.RS_IDLE
+            if idle and not SimRocket.armed:
                 self._calibrate = True
             else:
                 await self._emit(

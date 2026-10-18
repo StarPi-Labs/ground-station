@@ -19,7 +19,7 @@
     const CAUTIONS = {
         system_arm: 'Liftoff detection on: the rocket runs its flight states and recovery.',
         system_disarm: 'The rocket stays idle until armed again.',
-        sensor_calibration: 'Rocket must be idle and still: IMU and barometers stop for about 10 s.'
+        sensor_calibration: 'Rocket must be idle, disarmed and still: IMU and barometers stop for about 10 s. Disarm first, arm again after.'
     };
 
     function escapeHtml(text) {

@@ -82,7 +82,7 @@ ROCKET_COMMANDS = {
         CommandSpec("cameras_off", "Turn the on-board cameras off."),
         CommandSpec(
             "sensor_calibration",
-            "Calibrate the IMU and barometers (about 10 s with both stopped; refused unless the rocket is idle).",
+            "Calibrate the IMU and barometers (about 10 s with both stopped; refused unless the rocket is idle and disarmed).",
         ),
         CommandSpec("system_arm", "Arm the system: the rocket detects liftoff and runs its flight states."),
         CommandSpec("system_disarm", "Disarm the system: the rocket stays idle (no effect after liftoff)."),

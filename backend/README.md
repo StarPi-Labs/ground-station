@@ -201,7 +201,7 @@ on LoRa only:
 | `cut_main` | `0x03` | Fire the main parachute cutter |
 | `cameras_on` | `0x04` | Turn the cameras on |
 | `cameras_off` | `0x05` | Turn the cameras off |
-| `sensor_calibration` | `0x06` | Calibrate the IMU and barometers, about 10 s with both stopped; refused unless the rocket is idle |
+| `sensor_calibration` | `0x06` | Calibrate the IMU and barometers, about 10 s with both stopped; refused unless the rocket is idle and disarmed |
 | `system_arm` | `0x07` | Arm: the rocket detects liftoff and runs its flight states (the firmware starts armed) |
 | `system_disarm` | `0x08` | Disarm: the rocket stays idle; no effect after liftoff |
 | `set_ground_temp` | `0x09` | `{"celsius": n}`, whole °C from 0 to 60: the ground temperature the rocket uses (LoRa only) |
@@ -214,7 +214,8 @@ The BLE link writes the id to the firmware's one writable characteristic and
 also offers `raw_write` (`{"characteristic": "<uuid>", "data": "<hex>"}`, API
 only). The simulator accepts the same commands (`set_ground_temp` on
 `sim-lora` only) and logs them like the firmware; arm and disarm set the armed
-bit `sim-lora` reports, nothing else.
+bit `sim-lora` reports, and a calibration is refused while armed or out of
+idle, as on the rocket.
 
 The LoRa link hands the command to `radio_app` as the JSON line
 `{"command": <id>, "data": 0}` on its command socket; `bytes` in the response
