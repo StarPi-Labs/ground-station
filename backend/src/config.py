@@ -90,6 +90,11 @@ class Config:
     sim_rate: float = field(
         default_factory=lambda: float(max(1, _env_int("SP_SIM_RATE", 350)))
     )
+    # Seconds after the simulated rocket starts when GPS sets its clock to UTC,
+    # a jump forward of decades as on the real MCU; 0 keeps time since start.
+    sim_gps_clock_s: float = field(
+        default_factory=lambda: max(0.0, _env_float("SP_SIM_GPS_CLOCK_S", 30.0))
+    )
     # Launch pad the simulated flight starts from (competition pad A by default).
     pad_lat: float = field(default_factory=lambda: _env_float("SP_PAD_LAT", 39.392547))
     pad_lon: float = field(default_factory=lambda: _env_float("SP_PAD_LON", -8.289517))

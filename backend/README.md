@@ -55,12 +55,17 @@ telemetry simulator, dashboard included. It flies a complete flight every 250 s
 25 m/s, main parachute at 6 m/s below 450 m, landing at T+201 s), so every
 flight phase shows up in the frontend. It sends 350 pkt/s by default, above
 the real rocket's ~300, for headroom; `SP_SIM_RATE` sets another rate (`make
-run-sim SP_SIM_RATE=500`). The rate is shared in a fixed mix: the IMU vectors
-at 25% each, altitude and pressure at 10%, temperature and GPS at 2.5% (at
-400 pkt/s: 100, 40 and 10 Hz; `RATES_HZ` in `links/sim.py`). On top of that
-it reports `T_ROCKET_STATE` on every state change and once a second. Its
-timestamps count from the moment it started, like a rocket whose clock GPS
-has not set.
+run-sim SP_SIM_RATE=500`). The rate is shared in the mix the firmware logs
+(`RATES_HZ` in `links/sim.py`): orientation, acceleration, gyro and the Kalman
+filter state from the IMU task at 100 Hz, the filter state, pressures and
+barometric altitudes (`T_SYSLOG`) from the barometer task at 20 Hz, GPS at
+2 Hz. On top of that it reports `T_ROCKET_STATE` at 10 Hz, ground pressure and
+temperature at start and after each `sensor_calibration` (the only time the
+firmware logs temperature), and each command it receives as `T_SYSLOG`. Like
+the firmware's BLE queue, each batch goes out newest first. Its timestamps
+count from the moment it started, like a rocket whose clock GPS has not set,
+until GPS sets it: `SP_SIM_GPS_CLOCK_S` (30 by default, 0 for never) seconds
+in, the clock jumps to UTC.
 
 `SP_LINKS=sim-ble,sim-lora` (`make sim2` at the top level) flies that same
 flight over two simulated radios instead, on one rocket clock:
@@ -71,10 +76,10 @@ flight over two simulated radios instead, on one rocket clock:
 * `sim-lora` is heard for the whole flight. It builds the data line `radio_app`
   would report 5 times a second (16-bit floats, groups sampled a little before
   the transmission) and puts it through the real LoRa link's conversion, so it
-  carries only altitude and speed, the two pressures, position and state.
+  carries only altitude and speed, position, state with the armed bit, and the
+  sensor status. Its pressures overflow the 16-bit float, as the real ones do.
 
-Both accept the rocket's commands and do nothing; `sim-ble` refuses them while
-out of range.
+`sim-ble` refuses commands while out of range.
 
 To run without Docker:
 
@@ -100,6 +105,7 @@ All settings come from environment variables.
 | `SP_LORA_CMD_SOCKET` | `/tmp/starpi_cmd.sock` | `radio_app`'s command socket (`/run/starpi/starpi_cmd.sock` under Compose) |
 | `SP_LORA_RECONNECT_DELAY` | `2` | Delay between attempts to reach `radio_app`, seconds |
 | `SP_SIM_RATE` | `350` | Packets per second sent by the `sim` link |
+| `SP_SIM_GPS_CLOCK_S` | `30` | Seconds after start when the simulated rocket's clock jumps to UTC, as when GPS sets it; `0` never |
 | `SP_MAX_PAGE_SIZE` | `1000` | Upper bound on `limit` |
 | `SP_LIVE_BUFFER` | `200` | Packets kept for websocket backfill |
 | `SP_SERVE_WEB` | `false` | Serve the bundled dashboard at `/` (else `/` redirects to `/docs`) |

@@ -56,27 +56,30 @@ MAIN_ALTITUDE = 450.0  # the main opens below this height, m
 DEPLOY_S = 2.0  # time for a parachute to settle the fall to its rate
 WIND_SPEED = 3.0  # horizontal drift while airborne, m/s
 STATUS_PERIOD_S = 5.0
-ROCKET_STATE_PERIOD_S = 1.0  # T_ROCKET_STATE: on every change, and this often
+ROCKET_STATE_PERIOD_S = 0.1  # T_ROCKET_STATE: the firmware's 10 Hz parachute task
 
-# The mix of message types, as sample rates in Hz: the IMU at the flight
-# firmware's 100 Hz task rate, logging three vectors, and the barometer faster
-# than its 20 Hz task. It is scaled to the total packet rate asked for
-# (SP_SIM_RATE, 350 pkt/s by default, above the real rocket's ~300).
-RATES_HZ: dict[MessageType, float] = {
-    MessageType.T_ACCELLERATION: 100.0,
-    MessageType.T_GYRO: 100.0,
-    MessageType.T_ORIENTATION: 100.0,
-    MessageType.T_FILTER_STATE: 40.0,
-    MessageType.T_PRESSURE: 40.0,
-    MessageType.T_TEMPERATURE: 10.0,
-    MessageType.T_GPS: 10.0,
+# What the firmware logs, as sample rates in Hz (app/src/main.cpp in mcu): the
+# IMU task at 100 Hz logs orientation, acceleration, gyro and the Kalman filter
+# state; the barometer task at 20 Hz the filter state again, the two pressures
+# and the two barometric altitudes (as T_SYSLOG); GPS at 2 Hz. Temperature is
+# only logged at a calibration. The mix is scaled to the total packet rate
+# asked for (SP_SIM_RATE, 350 pkt/s by default).
+RATES_HZ: dict[str, float] = {
+    "accel": 100.0,
+    "gyro": 100.0,
+    "orientation": 100.0,
+    "filter-imu": 100.0,
+    "filter-baro": 20.0,
+    "pressure": 20.0,
+    "baro-altitude": 20.0,
+    "gps": 2.0,
 }
 
 
-def scaled_rates(total: float) -> dict[MessageType, float]:
-    """RATES_HZ scaled so the message types add up to ``total`` pkt/s."""
+def scaled_rates(total: float) -> dict[str, float]:
+    """RATES_HZ scaled so the streams add up to ``total`` pkt/s."""
     factor = total / sum(RATES_HZ.values())
-    return {msg_type: hz * factor for msg_type, hz in RATES_HZ.items()}
+    return {stream: hz * factor for stream, hz in RATES_HZ.items()}
 
 # The two simulated radios (sim-ble, sim-lora).
 BLE_RANGE_M = 300.0  # above this height the rocket is out of Bluetooth range
@@ -84,6 +87,11 @@ LORA_PACKET_HZ = 5.0  # LoRa data packets per second
 # How long before a packet's transmission each of its groups was sampled, ms.
 LORA_AGE_MS = {"imu": 10, "baro": 25, "gps": 80}
 LORA_FC_ID = 252  # the flight computer's id in the firmware's LoRa protocol
+LORA_SENSOR_STATUS = 0x03  # both IMU and barometers passed the health check
+
+# The rocket's clock counts from power-on until GPS sets it to UTC: then it
+# jumps forward by decades. SP_SIM_GPS_CLOCK_S sets when (0: never).
+GPS_CLOCK_S = config.sim_gps_clock_s
 
 TICK_S = 0.02  # how often due samples are sent, in a batch like BLE notifications
 MAX_BACKLOG_S = 1.0  # samples older than this are skipped, not replayed
@@ -213,10 +221,23 @@ _t0: float | None = None
 def _flight_start() -> float:
     """Monotonic time the simulated rocket was switched on: one flight and one
     rocket clock, whichever simulated links are listening to it."""
-    global _t0
+    global _t0, _utc_offset_s
     if _t0 is None:
         _t0 = time.monotonic()
+        _utc_offset_s = time.time() - _t0
     return _t0
+
+
+_utc_offset_s = 0.0
+
+
+def _rocket_clock_us(at: float) -> int:
+    """The rocket's clock at monotonic time ``at``, in µs: time since power-on
+    until GPS_CLOCK_S, UTC from then on, as when GPS sets the MCU clock."""
+    t0 = _flight_start()
+    if GPS_CLOCK_S > 0 and at - t0 >= GPS_CLOCK_S:
+        return int((at + _utc_offset_s) * 1_000_000)
+    return int((at - t0) * 1_000_000)
 
 
 def _float16(value: float) -> float | None:
@@ -272,6 +293,9 @@ class SimLink(Link):
         self._next_status = 0.0
         self._rocket_state: RocketState | None = None
         self._next_rocket_state = 0.0
+        # The firmware calibrates at power-on, and logs ground pressure and
+        # temperature when it does: also on every sensor_calibration command.
+        self._calibrate = True
 
     async def start(self) -> None:
         self._connected = True
@@ -293,7 +317,8 @@ class SimLink(Link):
             now = time.monotonic()
             messages = self._due(now)
             if self._heard(flight_state((now - self._t0) % FLIGHT_CYCLE_S)):
-                for message in messages:
+                # The firmware's BLE queue is LIFO: each batch goes out newest first.
+                for message in reversed(messages):
                     await self._emit(message.to_bytes())
             await asyncio.sleep(TICK_S)
 
@@ -303,48 +328,73 @@ class SimLink(Link):
 
     def _due(self, now: float) -> list[LogMessage]:
         """Every sample whose time has come, oldest first."""
-        samples: list[tuple[float, MessageType]] = []
-        for msg_type, hz in self._rates.items():
+        samples: list[tuple[float, str]] = []
+        for stream, hz in self._rates.items():
             period = 1.0 / hz
-            due = self._next_due[msg_type]
+            due = self._next_due[stream]
             if now - due > MAX_BACKLOG_S:
                 # Fell far behind (a stalled ingest): skip ahead rather than
                 # flood the station with a burst of stale samples.
                 due = now
             while due <= now:
-                samples.append((due, msg_type))
+                samples.append((due, stream))
                 due += period
-            self._next_due[msg_type] = due
+            self._next_due[stream] = due
         samples.sort(key=lambda sample: sample[0])
 
-        messages = [self._sample(msg_type, at) for at, msg_type in samples]
+        messages = [self._sample(stream, at) for at, stream in samples]
+        if self._calibrate:
+            self._calibrate = False
+            messages.extend(self._calibration(now))
         for extra in (self._status(now), self._state(now)):
             if extra is not None:
                 messages.append(extra)
         return messages
 
     def _timestamp_us(self, at: float) -> int:
-        """Microseconds since the link started, like a flight computer whose
-        clock GPS has not set: the ground station must not rely on the date.
-        From the sample's own schedule, not the moment its batch is sent."""
-        return int((at - self._t0) * 1_000_000)
+        """The rocket's clock (see _rocket_clock_us): the ground station must
+        not rely on the date. From the sample's own schedule, not the moment
+        its batch is sent."""
+        return _rocket_clock_us(at)
 
-    def _sample(self, msg_type: MessageType, at: float) -> LogMessage:
-        """One reading of ``msg_type`` taken at monotonic time ``at``."""
+    def _calibration(self, now: float) -> list[LogMessage]:
+        """What barometer_calibrate() logs: ground pressure and temperature."""
+        altitude = PAD_ALTITUDE_M + flight_state((now - self._t0) % FLIGHT_CYCLE_S).altitude
+        timestamp_us = self._timestamp_us(now)
+        return [
+            LogMessage(
+                timestamp_us,
+                MessagePayloadType.P_FVEC2,
+                SourceSubsystem.S_BARO,
+                MessageType.T_PRESSURE,
+                {"x": _pressure_pa(altitude), "y": _pressure_pa(altitude) + 30.0},
+            ),
+            LogMessage(
+                timestamp_us,
+                MessagePayloadType.P_FVEC2,
+                SourceSubsystem.S_BARO,
+                MessageType.T_TEMPERATURE,
+                {"x": 21.5 + random.uniform(-0.1, 0.1), "y": 21.9 + random.uniform(-0.1, 0.1)},
+            ),
+        ]
+
+    def _sample(self, stream: str, at: float) -> LogMessage:
+        """One reading of ``stream`` (a RATES_HZ key) taken at monotonic time ``at``."""
         t = (at - self._t0) % FLIGHT_CYCLE_S
         state = flight_state(t)
         jitter = lambda scale: random.uniform(-scale, scale)  # noqa: E731
 
         def message(
-            src: SourceSubsystem, payload_type: MessagePayloadType, payload: Any
+            msg_type: MessageType, src: SourceSubsystem, payload_type: MessagePayloadType, payload: Any
         ) -> LogMessage:
             return LogMessage(self._timestamp_us(at), payload_type, src, msg_type, payload)
 
         # The same noisy altitude feeds every barometer reading.
         altitude = state.altitude + jitter(0.3)
 
-        if msg_type is MessageType.T_ACCELLERATION:
+        if stream == "accel":
             return message(
+                MessageType.T_ACCELLERATION,
                 SourceSubsystem.S_IMU,
                 MessagePayloadType.P_FVEC3,
                 # In milli-g, as the rocket's accelerometer reports it.
@@ -354,8 +404,9 @@ class SimLink(Link):
                     "z": (state.accel + jitter(0.6)) * MG_PER_MS2,
                 },
             )
-        if msg_type is MessageType.T_GYRO:
+        if stream == "gyro":
             return message(
+                MessageType.T_GYRO,
                 SourceSubsystem.S_IMU,
                 MessagePayloadType.P_FVEC3,
                 # In °/s, bias-corrected, as the rocket logs it.
@@ -365,8 +416,9 @@ class SimLink(Link):
                     "z": (state.spin + jitter(2.0)),
                 },
             )
-        if msg_type is MessageType.T_ORIENTATION:
+        if stream == "orientation":
             return message(
+                MessageType.T_ORIENTATION,
                 SourceSubsystem.S_IMU,
                 MessagePayloadType.P_FVEC3,
                 {
@@ -375,14 +427,19 @@ class SimLink(Link):
                     "z": (state.roll_deg + jitter(0.5)) % 360.0,
                 },
             )
-        if msg_type is MessageType.T_FILTER_STATE:
+        if stream in ("filter-imu", "filter-baro"):
+            # The Kalman filter: altitude above the pad (zeroed by the
+            # calibration), vertical speed, vertical acceleration in g
+            # without gravity. Logged by both the IMU and the barometer task.
             return message(
-                SourceSubsystem.S_BARO,
-                MessagePayloadType.P_FVEC2,
-                {"x": PAD_ALTITUDE_M + altitude, "y": state.speed + jitter(0.4)},
+                MessageType.T_FILTER_STATE,
+                SourceSubsystem.S_IMU if stream == "filter-imu" else SourceSubsystem.S_BARO,
+                MessagePayloadType.P_FVEC3,
+                {"x": altitude, "y": state.speed + jitter(0.4), "z": (state.accel - G) / G + jitter(0.05)},
             )
-        if msg_type is MessageType.T_PRESSURE:
+        if stream == "pressure":
             return message(
+                MessageType.T_PRESSURE,
                 SourceSubsystem.S_BARO,
                 MessagePayloadType.P_FVEC2,  # the two barometers, like the firmware
                 {
@@ -390,25 +447,25 @@ class SimLink(Link):
                     "y": _pressure_pa(PAD_ALTITUDE_M + altitude) + 30.0 + jitter(5.0),
                 },
             )
-        if msg_type is MessageType.T_TEMPERATURE:
+        if stream == "baro-altitude":
+            # The two barometric altitudes above the pad, logged as T_SYSLOG.
             return message(
+                MessageType.T_SYSLOG,
                 SourceSubsystem.S_BARO,
                 MessagePayloadType.P_FVEC2,
-                {
-                    "x": 21.5 - altitude * 0.0065 + jitter(0.1),
-                    "y": 21.9 - altitude * 0.0065 + jitter(0.1),
-                },
+                {"x": altitude + jitter(0.5), "y": altitude + jitter(0.5)},
             )
-        if msg_type is MessageType.T_GPS:
+        if stream == "gps":
             lat, lon = _offset(
                 PAD_LAT, PAD_LON, north_m=state.drift_m * 0.3, east_m=state.drift_m
             )
             return message(
+                MessageType.T_GPS,
                 SourceSubsystem.S_GPS,
                 MessagePayloadType.P_FVEC2,
                 {"x": lat + jitter(0.00002), "y": lon + jitter(0.00002)},
             )
-        raise ValueError(f"simulator cannot produce {msg_type.name}")
+        raise ValueError(f"simulator cannot produce {stream}")
 
     def _status(self, now: float) -> LogMessage | None:
         """Syslog on every phase change, plus a heartbeat every few seconds."""
@@ -464,10 +521,13 @@ class SimLink(Link):
         # The firmware acknowledges nothing, but logs every command it takes.
         now = time.monotonic()
         await self._emit(self._syslog(self._timestamp_us(now), f"Received command: {name.upper()}").to_bytes())
-        if name == "sensor_calibration" and rocket_state((now - self._t0) % FLIGHT_CYCLE_S) is not RocketState.RS_IDLE:
-            await self._emit(
-                self._syslog(self._timestamp_us(now), "Calibration refused, rocket is not idle").to_bytes()
-            )
+        if name == "sensor_calibration":
+            if rocket_state((now - self._t0) % FLIGHT_CYCLE_S) is RocketState.RS_IDLE:
+                self._calibrate = True
+            else:
+                await self._emit(
+                    self._syslog(self._timestamp_us(now), "Calibration refused, rocket is not idle").to_bytes()
+                )
         return bytes([COMMAND_IDS[name]])
 
 
@@ -515,15 +575,16 @@ class SimLoRaLink(LoRaLink):
         """The data line radio_app would write for a packet sent at ``now``."""
         t = (now - self._t0) % FLIGHT_CYCLE_S
         state = flight_state(t)
-        altitude = PAD_ALTITUDE_M + state.altitude + random.uniform(-0.3, 0.3)
+        altitude = state.altitude + random.uniform(-0.3, 0.3)  # above the pad
         lat, lon = _offset(PAD_LAT, PAD_LON, north_m=state.drift_m * 0.3, east_m=state.drift_m)
         self._number = (self._number + 1) % 256
         return {
             "type": "data",
             "id": LORA_FC_ID,
             "number": self._number,
-            "tx_time_ms": int((now - self._t0) * 1000),
+            "tx_time_ms": _rocket_clock_us(now) // 1000,
             "state": int(rocket_state(t)) | (0x80 if SimRocket.armed else 0),
+            "sensor_status": LORA_SENSOR_STATUS,
             "imu": {
                 "altitude": _float16(altitude),
                 "vspeed": _float16(state.speed),
@@ -531,8 +592,8 @@ class SimLoRaLink(LoRaLink):
                 "dt_ms": -LORA_AGE_MS["imu"],
             },
             "baro": {
-                "p1": _float16(_pressure_pa(altitude)),
-                "p2": _float16(_pressure_pa(altitude) + 30.0),
+                "p1": _float16(_pressure_pa(PAD_ALTITUDE_M + altitude)),
+                "p2": _float16(_pressure_pa(PAD_ALTITUDE_M + altitude) + 30.0),
                 "dt_ms": -LORA_AGE_MS["baro"],
             },
             "gps": {"latitude": lat, "longitude": lon, "dt_ms": -LORA_AGE_MS["gps"]},
