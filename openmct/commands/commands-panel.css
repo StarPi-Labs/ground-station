@@ -68,6 +68,17 @@
     font-weight: 600;
 }
 
+.sp-cmd__param {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    margin-top: 0.3em;
+}
+
+.sp-cmd__param input {
+    width: 5em;
+}
+
 .sp-cmd .sp-cmd__danger {
     border-color: var(--sp-alarm);
     background: var(--sp-alarm);

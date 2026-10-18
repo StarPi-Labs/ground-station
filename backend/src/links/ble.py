@@ -19,6 +19,7 @@ from bleak.exc import BleakError
 from config import config
 from links.base import (
     COMMAND_IDS,
+    DATA_COMMANDS,
     ROCKET_COMMANDS,
     BadCommand,
     CommandSpec,
@@ -42,8 +43,9 @@ SENSOR_CALIBRATION_CHARACTERISTIC_UUID = "53cfc3a2-72dd-4bf1-805c-acc1f8ba9706"
 LOG_MESSAGE_BUFFER_SIZE = 256
 
 
+# Every rocket command but those that need an argument: BLE writes the id alone.
 COMMANDS = {
-    **ROCKET_COMMANDS,
+    **{name: spec for name, spec in ROCKET_COMMANDS.items() if name not in DATA_COMMANDS},
     "raw_write": CommandSpec(
         name="raw_write",
         description="Escape hatch: write arbitrary bytes to a characteristic.",

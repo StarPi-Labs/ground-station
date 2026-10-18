@@ -182,9 +182,11 @@ curl -X POST http://localhost:8000/api/commands \
 link that supports the command is used. A command that cannot be delivered
 returns `503` and is recorded with status `failed`.
 
-The rocket's commands take no arguments and are one byte on the wire, the same
-on every link (`COMMAND_IDS` in `links/base.py`, mirroring `enum LoRaCommand`
-in the firmware's `lora.h`):
+The rocket's commands are one byte on the wire, the same on every link
+(`COMMAND_IDS` in `links/base.py`, mirroring `enum LoRaCommand` in the
+firmware's `lora.h`). Only `set_ground_temp` takes an argument, carried in the
+LoRa command packet's 64-bit `data`; BLE writes the id alone, so it is offered
+on LoRa only:
 
 | Command | Id | Effect |
 | --- | --- | --- |
@@ -193,11 +195,20 @@ in the firmware's `lora.h`):
 | `cut_main` | `0x03` | Fire the main parachute cutter |
 | `cameras_on` | `0x04` | Turn the cameras on |
 | `cameras_off` | `0x05` | Turn the cameras off |
-| `sensor_calibration` | `0x06` | Calibrate the sensors |
+| `sensor_calibration` | `0x06` | Calibrate the IMU and barometers, about 10 s with both stopped; refused unless the rocket is idle |
+| `system_arm` | `0x07` | Arm: the rocket detects liftoff and runs its flight states (the firmware starts armed) |
+| `system_disarm` | `0x08` | Disarm: the rocket stays idle; no effect after liftoff |
+| `set_ground_temp` | `0x09` | `{"celsius": n}`, whole °C from 0 to 60: the ground temperature the rocket uses (LoRa only) |
+
+The firmware acknowledges nothing: it logs `Received command: …` as
+`T_SYSLOG`, which only BLE carries. Over LoRa, arm and disarm show in the
+link status (`armed`).
 
 The BLE link writes the id to the firmware's one writable characteristic and
 also offers `raw_write` (`{"characteristic": "<uuid>", "data": "<hex>"}`, API
-only). The simulator accepts the same commands and does nothing.
+only). The simulator accepts the same commands (`set_ground_temp` on
+`sim-lora` only) and logs them like the firmware; arm and disarm set the armed
+bit `sim-lora` reports, nothing else.
 
 The LoRa link hands the command to `radio_app` as the JSON line
 `{"command": <id>, "data": 0}` on its command socket; `bytes` in the response

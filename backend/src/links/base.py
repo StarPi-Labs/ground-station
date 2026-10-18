@@ -58,7 +58,18 @@ COMMAND_IDS = {
     "cameras_on": 0x04,
     "cameras_off": 0x05,
     "sensor_calibration": 0x06,
+    "system_arm": 0x07,
+    "system_disarm": 0x08,
+    "set_ground_temp": 0x09,
 }
+
+# Commands that carry an argument in the LoRa command packet's 64-bit ``data``.
+# BLE writes the id byte alone, so only LoRa can send them.
+DATA_COMMANDS = {"set_ground_temp"}
+
+#: Accepted ground temperatures for ``set_ground_temp``, whole °C. The firmware
+#: reads ``data`` as an unsigned integer: no negative values, no decimals.
+GROUND_TEMP_RANGE_C = (0, 60)
 
 #: What each of them does, for the links that offer them.
 ROCKET_COMMANDS = {
@@ -69,10 +80,35 @@ ROCKET_COMMANDS = {
         CommandSpec("cut_main", "Fire the main parachute cutter."),
         CommandSpec("cameras_on", "Turn the on-board cameras on."),
         CommandSpec("cameras_off", "Turn the on-board cameras off."),
-        CommandSpec("sensor_calibration", "Trigger the on-board sensor calibration routine."),
+        CommandSpec(
+            "sensor_calibration",
+            "Calibrate the IMU and barometers (about 10 s with both stopped; refused unless the rocket is idle).",
+        ),
+        CommandSpec("system_arm", "Arm the system: the rocket detects liftoff and runs its flight states."),
+        CommandSpec("system_disarm", "Disarm the system: the rocket stays idle (no effect after liftoff)."),
+        CommandSpec(
+            "set_ground_temp",
+            "Set the ground temperature the rocket uses (LoRa only).",
+            {"celsius": f"whole degrees Celsius, {GROUND_TEMP_RANGE_C[0]} to {GROUND_TEMP_RANGE_C[1]}"},
+        ),
     )
 }
 assert ROCKET_COMMANDS.keys() == COMMAND_IDS.keys()
+
+
+def command_data(name: str, args: dict[str, Any]) -> int:
+    """The LoRa command packet's 64-bit ``data`` for ``name`` with ``args``."""
+    if name == "set_ground_temp":
+        celsius = args.get("celsius")
+        low, high = GROUND_TEMP_RANGE_C
+        if isinstance(celsius, bool) or not isinstance(celsius, int) or not low <= celsius <= high:
+            raise BadCommand(f"'celsius' must be a whole number from {low} to {high}, got {celsius!r}")
+        return celsius
+    # No other command uses it: optional, 0 by default.
+    data = args.get("data", 0)
+    if isinstance(data, bool) or not isinstance(data, int) or not 0 <= data < 1 << 64:
+        raise BadCommand(f"'data' must be an integer from 0 to 2^64-1, got {data!r}")
+    return data
 
 
 class Link(abc.ABC):

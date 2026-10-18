@@ -48,12 +48,12 @@ from config import config
 from links.base import (
     COMMAND_IDS,
     ROCKET_COMMANDS,
-    BadCommand,
     CommandSpec,
     Link,
     LinkError,
     PacketHandler,
     UnknownCommand,
+    command_data,
 )
 from protocol import LogMessage, MessagePayloadType, MessageType, SourceSubsystem
 
@@ -371,9 +371,6 @@ class LoRaLink(Link):
 
     @staticmethod
     def _encode_command(name: str, args: dict[str, Any]) -> bytes:
-        # The LoRa command packet carries a 64-bit argument next to the id; no
-        # command uses it yet, so it is optional here and 0 by default.
-        data = args.get("data", 0)
-        if isinstance(data, bool) or not isinstance(data, int) or not 0 <= data < 1 << 64:
-            raise BadCommand(f"'data' must be an integer from 0 to 2^64-1, got {data!r}")
+        # The LoRa command packet carries a 64-bit argument next to the id.
+        data = command_data(name, args)
         return (json.dumps({"command": COMMAND_IDS[name], "data": data}) + "\n").encode()

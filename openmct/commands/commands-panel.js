@@ -15,6 +15,12 @@
     // Their send buttons work only for PYRO_UNLOCK_MS after "Unlock".
     const PYRO_COMMANDS = new Set(['eject_a', 'eject_c', 'cut_main']);
     const PYRO_UNLOCK_MS = 30000;
+    // Shown when confirming these: what sending them does to the rocket.
+    const CAUTIONS = {
+        system_arm: 'Liftoff detection on: the rocket runs its flight states and recovery.',
+        system_disarm: 'The rocket stays idle until armed again.',
+        sensor_calibration: 'Rocket must be idle and still: IMU and barometers stop for about 10 s.'
+    };
 
     function escapeHtml(text) {
         return String(text).replace(/[&<>"']/g, (c) => ({
@@ -34,6 +40,8 @@
             this.pending = null;
             this.pyroUnlocked = false;
             this.inFlight = false;
+            // Typed argument values, by command and parameter: kept across redraws.
+            this.args = {};
 
             element.innerHTML = `
                 <div class="sp-cmd">
@@ -46,6 +54,12 @@
             this.result = element.querySelector('[data-ref="result"]');
             this.historyList = element.querySelector('[data-ref="history"]');
             this.list.addEventListener('click', (event) => this.onClick(event));
+            this.list.addEventListener('input', (event) => {
+                const { command, param } = event.target.dataset;
+                if (command && param) {
+                    this.args[command] = { ...this.args[command], [param]: event.target.value };
+                }
+            });
 
             this.offStation = window.StarPi.station.onStatus(() => this.render());
             this.poll();
@@ -94,6 +108,12 @@
             const { action, command, link } = button.dataset;
 
             if (action === 'arm') {
+                const missing = this.argsFor(command).error;
+                if (missing) {
+                    this.result.className = 'sp-cmd__result is-alarm';
+                    this.result.textContent = `${command}: ${missing}`;
+                    return;
+                }
                 this.pending = `${command}@${link}`;
                 clearTimeout(this.confirmTimer);
                 this.confirmTimer = setTimeout(() => {
@@ -136,17 +156,34 @@
             return this.linkUp(link) && (!PYRO_COMMANDS.has(command) || this.pyroUnlocked);
         }
 
+        /** The arguments typed for `name`, as numbers: `{ args }`, or `{ error }` when one is missing. */
+        argsFor(name) {
+            const params = this.available.find((c) => c.name === name)?.params ?? {};
+            const args = {};
+            for (const param of Object.keys(params)) {
+                const text = String(this.args[name]?.[param] ?? '').trim();
+                if (text === '' || !Number.isInteger(Number(text))) {
+                    return { error: `enter ${param} (${params[param]})` };
+                }
+                args[param] = Number(text);
+            }
+
+            return { args };
+        }
+
         async send(name, link) {
             this.result.className = 'sp-cmd__result';
             this.result.textContent = `Sending ${name}…`;
+            const { args = {} } = this.argsFor(name);
             try {
                 await window.StarPi.api('/commands', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, args: {}, link })
+                    body: JSON.stringify({ name, args, link })
                 });
                 this.result.classList.add('is-ok');
-                this.result.textContent = `${name} sent over ${link} at ${clock(Date.now())}`;
+                const shown = Object.entries(args).map(([k, v]) => `${k} ${v}`).join(', ');
+                this.result.textContent = `${name}${shown ? ` (${shown})` : ''} sent over ${link} at ${clock(Date.now())}`;
             } catch (error) {
                 this.result.classList.add('is-alarm');
                 const reason = error.status === 503 ? 'rocket unreachable' : error.message;
@@ -158,9 +195,9 @@
         /** The available commands, one entry each with the links that offer it, in the backend's order. */
         commands() {
             const byName = new Map();
-            for (const { name, description, link } of this.available) {
+            for (const { name, description, params, link } of this.available) {
                 if (!byName.has(name)) {
-                    byName.set(name, { name, description, links: [] });
+                    byName.set(name, { name, description, params: params ?? {}, links: [] });
                 }
                 byName.get(name).links.push(link);
             }
@@ -175,7 +212,8 @@
             let actions;
             if (armed !== undefined) {
                 const data = `data-command="${name}" data-link="${escapeHtml(armed)}"`;
-                actions = `<span class="sp-cmd__confirm">${pyro ? 'Fire' : 'Send'} over ${escapeHtml(armed)}?</span>
+                const caution = CAUTIONS[command.name] ? ` ${escapeHtml(CAUTIONS[command.name])}` : '';
+                actions = `<span class="sp-cmd__confirm">${pyro ? 'Fire' : 'Send'} over ${escapeHtml(armed)}?${caution}</span>
                     <button type="button" class="c-button c-button--major sp-cmd__danger" data-action="send" ${data}>${pyro ? 'Fire' : 'Confirm'}</button>
                     <button type="button" class="c-button" data-action="cancel" ${data}>Cancel</button>`;
             } else {
@@ -189,10 +227,17 @@
                 }).join('')}`;
             }
 
+            const inputs = Object.entries(command.params).map(([param, hint]) => `<label class="sp-cmd__param">
+                    ${escapeHtml(param)}
+                    <input type="number" step="1" inputmode="numeric" data-command="${name}" data-param="${escapeHtml(param)}"
+                        title="${escapeHtml(hint)}">
+                </label>`).join('');
+
             return `<li class="sp-cmd__item">
                 <div class="sp-cmd__text">
                     <code>${name}</code>
                     <p>${escapeHtml(command.description)}</p>
+                    ${inputs}
                 </div>
                 <div class="sp-cmd__actions">${actions}</div>
             </li>`;
@@ -230,6 +275,11 @@
             if (html !== this.drawn) {
                 this.drawn = html;
                 this.list.innerHTML = html;
+                // Typed values are not in the html (a keystroke would redraw
+                // the input under the cursor): put them back after a redraw.
+                for (const input of this.list.querySelectorAll('input[data-param]')) {
+                    input.value = this.args[input.dataset.command]?.[input.dataset.param] ?? '';
+                }
             }
 
             this.historyList.innerHTML = this.history.length

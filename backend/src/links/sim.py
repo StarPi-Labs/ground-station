@@ -28,6 +28,7 @@ from typing import Any
 from config import config
 from links.base import (
     COMMAND_IDS,
+    DATA_COMMANDS,
     ROCKET_COMMANDS,
     CommandSpec,
     Link,
@@ -230,11 +231,31 @@ def _float16(value: float) -> float | None:
         return None
 
 
-# The rocket's commands, all accepted and none acted on.
+# The rocket's commands over the simulated BLE (none that needs an argument,
+# as on the real BLE). Only arm and disarm do something: the armed flag below.
 COMMANDS = {
-    name: CommandSpec(name, f"{spec.description} Simulator no-op.")
+    name: CommandSpec(name, f"{spec.description} Simulated.", spec.params)
     for name, spec in ROCKET_COMMANDS.items()
+    if name not in DATA_COMMANDS
 }
+
+
+class SimRocket:
+    """What the simulated rocket keeps between commands, shared by its radios.
+
+    Armed at start, like the firmware today (``system_armed = true``, a FIXME
+    there). The flight is scripted, so being disarmed does not keep it on the
+    pad: the flag only shows in the LoRa state byte, as on the real rocket.
+    """
+
+    armed = True
+
+    @classmethod
+    def command(cls, name: str) -> None:
+        if name == "system_arm":
+            cls.armed = True
+        elif name == "system_disarm":
+            cls.armed = False
 
 
 class SimLink(Link):
@@ -439,6 +460,14 @@ class SimLink(Link):
             raise UnknownCommand(f"simulator link has no command {name!r}")
 
         log.info("simulator received command %s", name)
+        SimRocket.command(name)
+        # The firmware acknowledges nothing, but logs every command it takes.
+        now = time.monotonic()
+        await self._emit(self._syslog(self._timestamp_us(now), f"Received command: {name.upper()}").to_bytes())
+        if name == "sensor_calibration" and rocket_state((now - self._t0) % FLIGHT_CYCLE_S) is not RocketState.RS_IDLE:
+            await self._emit(
+                self._syslog(self._timestamp_us(now), "Calibration refused, rocket is not idle").to_bytes()
+            )
         return bytes([COMMAND_IDS[name]])
 
 
@@ -494,7 +523,7 @@ class SimLoRaLink(LoRaLink):
             "id": LORA_FC_ID,
             "number": self._number,
             "tx_time_ms": int((now - self._t0) * 1000),
-            "state": int(rocket_state(t)),
+            "state": int(rocket_state(t)) | (0x80 if SimRocket.armed else 0),
             "imu": {
                 "altitude": _float16(altitude),
                 "vspeed": _float16(state.speed),
@@ -527,4 +556,5 @@ class SimLoRaLink(LoRaLink):
             raise UnknownCommand(f"simulator link has no command {name!r}")
         line = self._encode_command(name, args)
         log.info("simulator received command %s over LoRa", name)
+        SimRocket.command(name)
         return line
