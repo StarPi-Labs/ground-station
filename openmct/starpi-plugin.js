@@ -94,8 +94,11 @@
                 { key: 'lon', name: 'Longitude', unit: '°', from: 'y' }
             ]
         },
+        // The firmware also logs numbers as T_SYSLOG (the two barometric
+        // altitudes, 20 times a second): only the text is the log.
         T_SYSLOG: {
             name: 'System log',
+            payloadType: 'P_STRING',
             fields: [{ key: 'message', name: 'Message', from: null, format: 'string' }]
         },
         T_ROCKET_STATE: {
@@ -121,7 +124,7 @@
         'baro.temperature2': { name: 'Temperature at calibration (barometer 2)', message: 'T_TEMPERATURE', from: 'y', unit: '°C', precision: 1, stale: false },
         'gps.lat': { name: 'Latitude', message: 'T_GPS', from: 'x', unit: '°', precision: 6 },
         'gps.lon': { name: 'Longitude', message: 'T_GPS', from: 'y', unit: '°', precision: 6 },
-        'sys.log': { name: 'System log', message: 'T_SYSLOG', from: null, format: 'string' }
+        'sys.log': { name: 'System log', message: 'T_SYSLOG', from: null, format: 'string', payloadType: 'P_STRING' }
     };
     for (const [group, name, message, unit, precision] of [
         ['accel', 'Acceleration', 'T_ACCELLERATION', 'mg', 0],
@@ -303,7 +306,7 @@
     }
 
     /** Packets of one type in [start, end], oldest first. */
-    async function fetchRange(type, start, end) {
+    async function fetchRange(type, start, end, payloadType) {
         // Paged newest first, so a range past MAX_HISTORY loses its old end
         // rather than the recent one. Each page continues from the last
         // packet of the previous one (after_id): offset paging slowed down
@@ -311,6 +314,9 @@
         const params = new URLSearchParams({
             type, order: 'desc', limit: String(PAGE_SIZE), with_total: 'false'
         });
+        if (payloadType !== undefined) {
+            params.set('payload_type', payloadType);
+        }
         if (start !== undefined) {
             params.set('since_us', micros(start));
         }
@@ -334,8 +340,11 @@
         return selectLinks(pages.flat().reverse());
     }
 
-    async function fetchLatest(type, end) {
+    async function fetchLatest(type, end, payloadType) {
         const params = new URLSearchParams({ type, limit: '1', order: 'desc' });
+        if (payloadType !== undefined) {
+            params.set('payload_type', payloadType);
+        }
         if (end !== undefined) {
             params.set('until_us', micros(end));
         }
@@ -378,11 +387,14 @@
         return inflight.get(key);
     }
 
-    function fetchPackets(type, options) {
+    /** History of one message type; `payloadType` keeps only that payload (T_SYSLOG's text). */
+    function fetchPackets(type, options, payloadType) {
         const latest = options.strategy === 'latest' && options.size === 1;
-        const key = `${type}|${options.start}|${options.end}|${latest}`;
+        const key = `${type}|${payloadType}|${options.start}|${options.end}|${latest}`;
         if (!inflight.has(key)) {
-            const request = (latest ? fetchLatest(type, options.end) : fetchRange(type, options.start, options.end))
+            const request = (latest
+                ? fetchLatest(type, options.end, payloadType)
+                : fetchRange(type, options.start, options.end, payloadType))
                 .finally(() => inflight.delete(key));
             inflight.set(key, request);
         }
@@ -934,7 +946,9 @@
                     const plot = options.strategy === 'minmax' && options.size > 0
                         && options.start !== undefined && options.end !== undefined
                         && spec.format !== 'string';
-                    const packets = await (plot ? fetchPlotPackets(spec, options) : fetchPackets(spec.message, options));
+                    const packets = await (plot
+                        ? fetchPlotPackets(spec, options)
+                        : fetchPackets(spec.message, options, spec.payloadType));
 
                     // A packet without this field (T_FILTER_STATE over LoRa has no z) is no datum.
                     return packets.map((packet) => pointDatum(spec, packet)).filter((datum) => datum.value !== undefined);
@@ -946,6 +960,9 @@
 
                     return batched(
                         (emit) => stream.subscribe(spec.message, (packet) => {
+                            if (spec.payloadType !== undefined && packet.payload_type !== spec.payloadType) {
+                                return;
+                            }
                             const datum = pointDatum(spec, packet);
                             if (datum.value !== undefined) {
                                 emit(datum);
@@ -972,13 +989,20 @@
             openmct.telemetry.addProvider({
                 supportsRequest: is(MESSAGE_TYPE),
                 async request(domainObject, options) {
-                    const packets = await fetchPackets(domainObject.identifier.key, options);
+                    const key = domainObject.identifier.key;
+                    const packets = await fetchPackets(key, options, MESSAGES[key].payloadType);
 
                     return packets.map(messageDatum);
                 },
                 supportsSubscribe: is(MESSAGE_TYPE),
                 subscribe(domainObject, callback) {
-                    return stream.subscribe(domainObject.identifier.key, (packet) => callback(messageDatum(packet)));
+                    const { payloadType } = MESSAGES[domainObject.identifier.key];
+
+                    return stream.subscribe(domainObject.identifier.key, (packet) => {
+                        if (payloadType === undefined || packet.payload_type === payloadType) {
+                            callback(messageDatum(packet));
+                        }
+                    });
                 }
             });
 

@@ -304,7 +304,7 @@ function onPacket(packet) {
     if (state.altitude.length > 240) state.altitude.shift();
   }
 
-  if (packet.type === "T_SYSLOG") {
+  if (packet.type === "T_SYSLOG" && packet.payload_type === "P_STRING") {
     const log = document.getElementById("syslog");
     const line = document.createElement("div");
     line.innerHTML = `<span class="t">${clock(packet.timestamp_us)}</span> ${escapeHtml(String(packet.payload))}`;
