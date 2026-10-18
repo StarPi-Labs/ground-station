@@ -94,7 +94,7 @@ class SourceSubsystem(IntEnum):
 class MessageType(IntEnum):
     T_ACCELLERATION = 1 << 0
     T_GYRO = 1 << 1
-    T_ALT_SPEED = 1 << 2
+    T_FILTER_STATE = 1 << 2
     T_PRESSURE = 1 << 3
     T_TEMPERATURE = 1 << 4
     T_GPS = 1 << 5

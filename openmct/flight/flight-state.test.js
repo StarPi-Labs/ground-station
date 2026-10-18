@@ -145,10 +145,10 @@ test('samples older than the last one are ignored', () => {
 test('the simulated radios rank like the real ones', () => {
     const { LinkSelector } = require('./flight-state.js');
     const selector = new LinkSelector();
-    assert.equal(selector.accept('T_ALT_SPEED', 'sim-ble', 1000), true);
-    assert.equal(selector.accept('T_ALT_SPEED', 'sim-lora', 1010), false);
+    assert.equal(selector.accept('T_FILTER_STATE', 'sim-ble', 1000), true);
+    assert.equal(selector.accept('T_FILTER_STATE', 'sim-lora', 1010), false);
     // sim-ble out of range: sim-lora takes the type over.
-    assert.equal(selector.accept('T_ALT_SPEED', 'sim-lora', 7000), true);
+    assert.equal(selector.accept('T_FILTER_STATE', 'sim-lora', 7000), true);
 });
 
 test('a position sampled before the newest altitude still counts', () => {
@@ -231,7 +231,7 @@ test('lateral acceleration is across the long axis (IMU Z)', () => {
  * `ble` and `lora` are [rate in Hz, from s, until s] or null. LoRa arrives
  * `lag` s after the rocket sampled it.
  */
-function received({ ble = null, lora = null, lag = 0.3, type = 'T_ALT_SPEED' } = {}) {
+function received({ ble = null, lora = null, lag = 0.3, type = 'T_FILTER_STATE' } = {}) {
     const packets = [];
     for (const [link, span, delay] of [['ble', ble, 0], ['lora', lora, lag]]) {
         if (!span) continue;
@@ -275,7 +275,7 @@ test('a slow type on the preferred link still holds it', () => {
 
 test('a single late packet from the preferred link barely interrupts the other', () => {
     const packets = received({ ble: [100, 0, 2], lora: [3, 0, 30] });
-    packets.push({ type: 'T_ALT_SPEED', link: 'ble', t: 15000, at: 15000 });
+    packets.push({ type: 'T_FILTER_STATE', link: 'ble', t: 15000, at: 15000 });
     const kept = select(packets.sort((a, b) => a.at - b.at));
     const lost = received({ lora: [3, 15, 30] }).length - kept.filter((p) => p.link === 'lora' && p.at >= 15300).length;
     assert.ok(lost <= 2, `LoRa packets held back: ${lost}`);
@@ -286,7 +286,7 @@ test('links are chosen per message type', () => {
     // BLE delivers acceleration only; altitude comes over LoRa alone.
     const kept = select([
         ...received({ ble: [100, 0, 5], type: 'T_ACCELLERATION' }),
-        ...received({ lora: [3, 0, 5], type: 'T_ALT_SPEED' })
+        ...received({ lora: [3, 0, 5], type: 'T_FILTER_STATE' })
     ].sort((a, b) => a.at - b.at), selector);
     assert.equal(count(kept, 'lora'), 15);
     assert.equal(count(kept, 'ble'), 500);
@@ -327,14 +327,14 @@ test('the tracker sees each sample once when both links carry the flight', () =>
                     samples.push({ type: 'T_ROCKET_STATE', link, at, sample: { t: t * 1000, kind: 'state', state: s.state } });
                     state = s.state;
                 }
-                samples.push({ type: 'T_ALT_SPEED', link, at, sample: { t: t * 1000, kind: 'alt', altitude, speed: s.v } });
+                samples.push({ type: 'T_FILTER_STATE', link, at, sample: { t: t * 1000, kind: 'alt', altitude, speed: s.v } });
             }
         }
         samples.sort((a, b) => a.at - b.at);
         let fed = 0;
         for (const p of samples) {
             if (selector.accept(p.type, p.link, p.at) && tracker.update(p.sample)) {
-                fed += p.type === 'T_ALT_SPEED' ? 1 : 0;
+                fed += p.type === 'T_FILTER_STATE' ? 1 : 0;
             }
         }
         return { snapshot: tracker.snapshot(), fed };
@@ -360,7 +360,7 @@ test('the flight is tracked from LoRa alone once BLE drops', () => {
                 samples.push({ type: 'T_ROCKET_STATE', link, at, sample: { t: t * 1000, kind: 'state', state: s.state } });
                 state = s.state;
             }
-            samples.push({ type: 'T_ALT_SPEED', link, at, sample: { t: t * 1000, kind: 'alt', altitude: PAD_ALT + s.h, speed: s.v } });
+            samples.push({ type: 'T_FILTER_STATE', link, at, sample: { t: t * 1000, kind: 'alt', altitude: PAD_ALT + s.h, speed: s.v } });
         }
     }
     samples.sort((a, b) => a.at - b.at);

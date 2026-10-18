@@ -66,7 +66,7 @@ RATES_HZ: dict[MessageType, float] = {
     MessageType.T_ACCELLERATION: 100.0,
     MessageType.T_GYRO: 100.0,
     MessageType.T_ORIENTATION: 100.0,
-    MessageType.T_ALT_SPEED: 40.0,
+    MessageType.T_FILTER_STATE: 40.0,
     MessageType.T_PRESSURE: 40.0,
     MessageType.T_TEMPERATURE: 10.0,
     MessageType.T_GPS: 10.0,
@@ -348,7 +348,7 @@ class SimLink(Link):
                     "z": (state.roll_deg + jitter(0.5)) % 360.0,
                 },
             )
-        if msg_type is MessageType.T_ALT_SPEED:
+        if msg_type is MessageType.T_FILTER_STATE:
             return message(
                 SourceSubsystem.S_BARO,
                 MessagePayloadType.P_FVEC2,

@@ -105,7 +105,7 @@
      *
      * @param {object} spec
      *   series: [{ t, v }] sorted by t
-     *   offset: added to every value (altitude above ground from MSL)
+     *   offset: added to every value (altitude above ground from the rocket's altitude)
      *   start, end: time window (ms)
      *   events: [{ t, phase }] drawn as labelled vertical rules
      *   zero: draw the y = 0 line (speed)

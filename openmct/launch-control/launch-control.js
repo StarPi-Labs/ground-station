@@ -14,7 +14,7 @@
     const TYPE = 'starpi.launch-control';
 
     const SOURCES = {
-        alt: 'T_ALT_SPEED',
+        alt: 'T_FILTER_STATE',
         accel: 'T_ACCELLERATION',
         gyro: 'T_GYRO',
         orient: 'T_ORIENTATION',
@@ -683,7 +683,7 @@
 
             refs.groundNote.textContent = flight.ground === null
                 ? 'Ground level: waiting for data'
-                : `${fixed(flight.altitude, 1)} m MSL · ground ${fixed(flight.ground, 1)} m (${flight.groundPinned ? 'set by hand' : 'pad median'})`;
+                : `${fixed(flight.altitude, 1)} m filter · ground ${fixed(flight.ground, 1)} m (${flight.groundPinned ? 'set by hand' : 'pad median'})`;
             refs.zero.disabled = flight.altitude === null;
             refs.unzero.hidden = !flight.groundPinned;
 

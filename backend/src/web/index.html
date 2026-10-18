@@ -177,8 +177,8 @@ const TYPES = {
   T_ACCELLERATION: { label: "Acceleration",  unit: "mg",    fmt: v => vec(v, 0) },
   T_GYRO:          { label: "Gyroscope",     unit: "mdps",  fmt: v => vec(v, 0) },
   T_ORIENTATION:   { label: "Orientation",   unit: "°",     fmt: v => vec(v, 1) },
-  T_ALT_SPEED:     { label: "Altitude / Speed", unit: "m, m/s",
-                     fmt: v => v && typeof v === "object" ? `${v.x.toFixed(1)} m · ${v.y.toFixed(1)} m/s` : String(v) },
+  T_FILTER_STATE:  { label: "Altitude filter", unit: "m, m/s, g",
+                     fmt: v => v && typeof v === "object" ? `${v.x.toFixed(1)} m · ${v.y.toFixed(1)} m/s` + (v.z === undefined ? "" : ` · ${v.z.toFixed(2)} g`) : String(v) },
   T_PRESSURE:      { label: "Pressure",      unit: "hPa",   fmt: v => vec(v, 2) },
   T_TEMPERATURE:   { label: "Temperature",   unit: "°C",    fmt: v => vec(v, 2) },
   T_GPS:           { label: "GPS",           unit: "lat, lon",
@@ -299,7 +299,7 @@ function onPacket(packet) {
   state.recentTimes.push(Date.now());
   if (state.recentTimes.length > 500) state.recentTimes.shift();
 
-  if (packet.type === "T_ALT_SPEED" && packet.payload && typeof packet.payload === "object") {
+  if (packet.type === "T_FILTER_STATE" && packet.payload && typeof packet.payload === "object") {
     state.altitude.push(packet.payload.x);
     if (state.altitude.length > 240) state.altitude.shift();
   }

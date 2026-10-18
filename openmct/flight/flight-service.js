@@ -20,11 +20,11 @@
     // History fed to a tracker before the window it reports on: long enough
     // to find the pad's ground level and the launch of a flight in progress.
     const LOOKBACK_MS = 10 * 60 * 1000;
-    const SOURCES = { alt: 'T_ALT_SPEED', accel: 'T_ACCELLERATION', gps: 'T_GPS', state: 'T_ROCKET_STATE' };
+    const SOURCES = { alt: 'T_FILTER_STATE', accel: 'T_ACCELLERATION', gps: 'T_GPS', state: 'T_ROCKET_STATE' };
     // What the flight objects go stale with, unless a point names its own
     // source: the long-range link carries no acceleration, so what is derived
     // from it stops in flight while the altitude goes on.
-    const STALE_SOURCE = 'T_ALT_SPEED';
+    const STALE_SOURCE = 'T_FILTER_STATE';
 
     function flightPoints() {
         const { PHASES } = window.StarPiFlight;
@@ -92,7 +92,7 @@
                 stale: 'T_ACCELLERATION',
                 value: (tracker) => (launched(tracker) ? tracker.maxAccelG : null)
             },
-            'flight.ground': { name: 'Ground level (MSL)', precision: 1, unit: 'm', on: ['alt'], value: (tracker) => tracker.ground },
+            'flight.ground': { name: 'Ground level', precision: 1, unit: 'm', on: ['alt'], value: (tracker) => tracker.ground },
             'flight.distance': {
                 name: 'Distance from pad',
                 precision: 0,
@@ -455,7 +455,7 @@
         }
     }
 
-    const GROUND_FIELD = 'Ground level override (m MSL, empty = pad median)';
+    const GROUND_FIELD = 'Ground level override (m on the rocket altitude scale, empty = pad median)';
 
     function settingsType() {
         return {
@@ -492,7 +492,7 @@
                 const render = (element, configuration = {}) => {
                     const ground = configuration.groundAltitude === '' || configuration.groundAltitude === undefined
                         ? 'pad median'
-                        : `${escape(configuration.groundAltitude)} m MSL`;
+                        : `${escape(configuration.groundAltitude)} m`;
                     element.innerHTML = `
                         <div style="padding: 12px 16px; overflow: auto; height: 100%;">
                             <p style="margin: 0 0 12px;">The flight phase comes from the rocket. Altitude above ground

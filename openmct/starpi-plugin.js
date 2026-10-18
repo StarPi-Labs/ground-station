@@ -58,12 +58,16 @@
     // Every message type and how its payload maps onto fields. `from` is the
     // payload key (x/y/z for vectors); scalar payloads use `from: null`. The
     // rocket has two barometers: pressure and temperature are (first, second).
+    // T_FILTER_STATE is the rocket's Kalman filter: altitude above the pad (the
+    // calibration zeroes it), vertical speed and vertical acceleration without
+    // gravity. LoRa does not carry the acceleration: `z` is then missing.
     const MESSAGES = {
-        T_ALT_SPEED: {
-            name: 'Altitude / Speed',
+        T_FILTER_STATE: {
+            name: 'Altitude filter',
             fields: [
                 { key: 'altitude', name: 'Altitude', unit: 'm', from: 'x' },
-                { key: 'speed', name: 'Vertical speed', unit: 'm/s', from: 'y' }
+                { key: 'speed', name: 'Vertical speed', unit: 'm/s', from: 'y' },
+                { key: 'accel', name: 'Vertical acceleration', unit: 'g', from: 'z' }
             ]
         },
         T_ACCELLERATION: { name: 'Acceleration', fields: vector('mg') },
@@ -106,8 +110,9 @@
 
     // Telemetry points: one measured quantity each.
     const POINTS = {
-        'baro.altitude': { name: 'Altitude (MSL)', message: 'T_ALT_SPEED', from: 'x', unit: 'm', precision: 1 },
-        'baro.speed': { name: 'Vertical speed', message: 'T_ALT_SPEED', from: 'y', unit: 'm/s', precision: 1 },
+        'baro.altitude': { name: 'Altitude (filter)', message: 'T_FILTER_STATE', from: 'x', unit: 'm', precision: 1 },
+        'baro.speed': { name: 'Vertical speed', message: 'T_FILTER_STATE', from: 'y', unit: 'm/s', precision: 1 },
+        'baro.accel': { name: 'Vertical acceleration (filter)', message: 'T_FILTER_STATE', from: 'z', unit: 'g', precision: 2 },
         'baro.pressure': { name: 'Pressure (barometer 1)', message: 'T_PRESSURE', from: 'x', unit: 'hPa', precision: 2 },
         'baro.pressure2': { name: 'Pressure (barometer 2)', message: 'T_PRESSURE', from: 'y', unit: 'hPa', precision: 2 },
         'baro.temperature': { name: 'Temperature (barometer 1)', message: 'T_TEMPERATURE', from: 'x', unit: '°C', precision: 1 },
@@ -165,7 +170,7 @@
         root: { name: 'StarPi', children: ['launch-control', 'telemetry', 'widgets'] },
         telemetry: { name: 'Telemetry', children: ['baro', 'imu', 'gps', 'flight', 'station', 'sys.log'] },
         widgets: { name: 'Widgets', children: ['rocket', 'commands'] },
-        baro: { name: 'Barometer', children: ['baro.altitude', 'baro.speed', 'baro.pressure', 'baro.pressure2', 'baro.temperature', 'baro.temperature2'] },
+        baro: { name: 'Barometer', children: ['baro.altitude', 'baro.speed', 'baro.accel', 'baro.pressure', 'baro.pressure2', 'baro.temperature', 'baro.temperature2'] },
         imu: { name: 'IMU', children: ['imu.accel', 'imu.gyro', 'imu.orientation'] },
         'imu.accel': { name: 'Acceleration', plot: true, children: ['imu.accel.x', 'imu.accel.y', 'imu.accel.z'] },
         'imu.gyro': { name: 'Angular rate', plot: true, children: ['imu.gyro.x', 'imu.gyro.y', 'imu.gyro.z'] },
@@ -929,7 +934,8 @@
                         && spec.format !== 'string';
                     const packets = await (plot ? fetchPlotPackets(spec, options) : fetchPackets(spec.message, options));
 
-                    return packets.map((packet) => pointDatum(spec, packet));
+                    // A packet without this field (T_FILTER_STATE over LoRa has no z) is no datum.
+                    return packets.map((packet) => pointDatum(spec, packet)).filter((datum) => datum.value !== undefined);
                 },
                 supportsSubscribe: is(POINT_TYPE),
                 supportsBatching: is(POINT_TYPE),
@@ -937,7 +943,12 @@
                     const spec = POINTS[domainObject.identifier.key];
 
                     return batched(
-                        (emit) => stream.subscribe(spec.message, (packet) => emit(pointDatum(spec, packet))),
+                        (emit) => stream.subscribe(spec.message, (packet) => {
+                            const datum = pointDatum(spec, packet);
+                            if (datum.value !== undefined) {
+                                emit(datum);
+                            }
+                        }),
                         callback,
                         options
                     );

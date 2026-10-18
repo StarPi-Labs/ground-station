@@ -16,7 +16,7 @@ wire bytes as on BLE:
     ============================  ================  ======  ==================
     LoRa field                    message type      source  payload
     ============================  ================  ======  ==================
-    imu.altitude, imu.vspeed      T_ALT_SPEED       S_IMU   P_FVEC2 m, m/s
+    imu.altitude, imu.vspeed      T_FILTER_STATE       S_IMU   P_FVEC2 m, m/s
     baro.p1, baro.p2              T_PRESSURE        S_BARO  P_FVEC2 mbar, mbar
     gps.latitude, gps.longitude   T_GPS             S_GPS   P_FVEC2 degrees
     state & 0x7f                  T_ROCKET_STATE    S_PARA  P_ROCKET_STATE
@@ -69,10 +69,10 @@ COMMAND_TIMEOUT_S = 2.0
 MAX_LINE = 64 * 1024
 
 # group -> (keys of its values, message type, source). In the firmware
-# T_ALT_SPEED is logged by both the IMU and the barometer task and the packet
+# T_FILTER_STATE is logged by both the IMU and the barometer task and the packet
 # does not say which wrote last; it keeps the values in its ``imu`` group.
 GROUPS: dict[str, tuple[tuple[str, str], MessageType, SourceSubsystem]] = {
-    "imu": (("altitude", "vspeed"), MessageType.T_ALT_SPEED, SourceSubsystem.S_IMU),
+    "imu": (("altitude", "vspeed"), MessageType.T_FILTER_STATE, SourceSubsystem.S_IMU),
     "baro": (("p1", "p2"), MessageType.T_PRESSURE, SourceSubsystem.S_BARO),
     "gps": (("latitude", "longitude"), MessageType.T_GPS, SourceSubsystem.S_GPS),
 }

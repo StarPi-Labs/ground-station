@@ -135,7 +135,7 @@ With both radios up the same quantity is stored once per link it arrived on
 by `link`.
 
 ```sh
-curl 'http://localhost:8000/api/packets?type=T_ALT_SPEED&limit=5'
+curl 'http://localhost:8000/api/packets?type=T_FILTER_STATE&limit=5'
 ```
 
 ```json
@@ -148,10 +148,10 @@ curl 'http://localhost:8000/api/packets?type=T_ALT_SPEED&limit=5'
       "timestamp": 1789583292.713217,
       "received_at_us": 1789583292714002,
       "link": "ble",
-      "payload_type": "P_FVEC2",
+      "payload_type": "P_FVEC3",
       "src": "S_BARO",
-      "type": "T_ALT_SPEED",
-      "payload": { "x": 110.2, "y": -1.4 }
+      "type": "T_FILTER_STATE",
+      "payload": { "x": 110.2, "y": -1.4, "z": -0.02 }
     }
   ]
 }
@@ -276,7 +276,7 @@ the API and the websocket see the same messages as over BLE:
 
 | LoRa field | Message | Source | Payload |
 | --- | --- | --- | --- |
-| `imu.altitude`, `imu.vspeed` | `T_ALT_SPEED` | `S_IMU` | `P_FVEC2`: x altitude (m), y vertical speed (m/s) |
+| `imu.altitude`, `imu.vspeed` | `T_FILTER_STATE` | `S_IMU` | `P_FVEC2`: x altitude (m), y vertical speed (m/s) |
 | `baro.p1`, `baro.p2` | `T_PRESSURE` | `S_BARO` | `P_FVEC2`: the two barometers (mbar) |
 | `gps.latitude`, `gps.longitude` | `T_GPS` | `S_GPS` | `P_FVEC2`: x latitude, y longitude (degrees) |
 | `state & 0x7f` | `T_ROCKET_STATE` | `S_PARA` | `P_ROCKET_STATE` (bit 7, the armed flag, goes to `armed` in the link status) |
@@ -294,9 +294,11 @@ the API and the websocket see the same messages as over BLE:
   frame when its values change, and otherwise once a second, so LoRa adds at
   most a few frames per packet and a steady value still arrives often enough
   not to turn stale.
-* `T_ALT_SPEED` is logged on the rocket by both the IMU and the barometer
-  task; the packet does not say which wrote last and keeps it in its `imu`
-  group, hence `S_IMU`.
+* `T_FILTER_STATE` (the rocket's Kalman filter: altitude above the pad,
+  vertical speed, vertical acceleration in g) is logged on the rocket by both
+  the IMU and the barometer task; the packet does not say which wrote last and
+  keeps it in its `imu` group, hence `S_IMU`. It has no acceleration, so over
+  LoRa the frame is `P_FVEC2` instead of the `P_FVEC3` heard over BLE.
 * Pressure and GPS groups that are all zeros (not measured yet, no fix) and
   values that are not finite numbers are skipped.
 * Not converted, because no `LogMessage` means the same: `imu.attitude`, the

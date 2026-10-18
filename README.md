@@ -230,7 +230,7 @@ display precision, so any standard view can combine them.
 | StarPi › Telemetry › | Contents |
 | --- | --- |
 | Flight | Flight phase (reported by the rocket), mission time, altitude above ground, total and lateral acceleration (across the long axis, IMU Z), apogee, max speed/acceleration, distance and bearing from the pad, ground track |
-| Barometer | Altitude (MSL), vertical speed, pressure and temperature of each of the two barometers |
+| Barometer | Altitude and vertical speed from the rocket's Kalman filter (`T_FILTER_STATE`; altitude zeroed on the pad by the calibration), filtered vertical acceleration, pressure and temperature of each of the two barometers |
 | IMU | Acceleration, angular rate, orientation: each opens as X/Y/Z overlaid and expands to the single axes |
 | GPS | Latitude, longitude |
 | Ground station | Rocket link state, packet rate, errors, dropped events |
@@ -359,13 +359,14 @@ first; they lock again after 30 s.
 The rocket reports its flight state (`T_ROCKET_STATE`: idle, boost, coast,
 drogue, main, touchdown), and the parachutes follow from it.
 `openmct/flight/flight-state.js` derives the rest from the reported state,
-barometric altitude and speed, the accelerometer and GPS:
+filtered altitude and speed (`T_FILTER_STATE`), the accelerometer and GPS:
 
 * **Launch time**: when the state first leaves idle. A page opened mid-flight
   finds it in the last 10 minutes of history; before that, mission time stays
   blank.
 * **Apogee**: the highest altitude before the drogue (or main) is reported.
-* **Ground level**: the median barometric altitude while idle on the pad.
+* **Ground level**: the median filtered altitude while idle on the pad (about 0 m
+  once the rocket's calibration has zeroed it).
 * **Pad position**: the average GPS fix while idle on the pad.
 
 A ground level set in **My Items › StarPi Flight Dashboard › Flight
