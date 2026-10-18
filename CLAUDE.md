@@ -17,6 +17,7 @@ Top-level `Makefile` wraps `docker compose` (compose file is the source of truth
 - `make down`, `make logs [S=backend]`, `make ps`, `make build`
 - `make test` — frontend flight-tracking tests: `node --test openmct/flight/flight-state.test.js`. Filter a single test with `node --test --test-name-pattern='<regex>' openmct/flight/flight-state.test.js`.
 - `make deploy PI=starpi@starpi.local` / `make bundle` / `make load` — cross-build arm64 images under QEMU for an offline Pi; then `make up BUILD=--no-build` on the Pi.
+- `make image PASSWORD=...` / `make flash DEV=/dev/sdX` — a ready SD card: Raspberry Pi OS Lite with Docker, the images and a clone of the branch (`scripts/build-image.sh`, in a privileged container with a chroot under QEMU); `scripts/firstboot.sh` sets up the networks and starts the stack on the Pi's first boot.
 
 Backend alone (`backend/Makefile`): `make build`, `make run`, `make run-sim` (no BLE needed, serves bundled web dashboard), `make dev` (runs `python src/main.py` on the host; needs `pip install -r requirements.txt`). API reference at http://localhost:8000/docs.
 

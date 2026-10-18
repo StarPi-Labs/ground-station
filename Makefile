@@ -28,7 +28,7 @@ export COMPOSE_PROFILES
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help up sim sim2 pi down restart build logs ps test setup-bl setup-lora hotspot lan tiles images bundle deploy load
+.PHONY: help up sim sim2 pi down restart build logs ps test setup-bl setup-lora hotspot lan tiles images bundle deploy load image flash
 
 help:
 	@echo "make up       build and start the stack on the rocket link (BLE; SP_LINKS=ble,lora adds LoRa and its radio service)"
@@ -50,6 +50,10 @@ help:
 	@echo "make load     on the Pi: load $(BUNDLE)"
 	@echo "make pi       on the Pi: start from the loaded images, Open MCT on port 80"
 	@echo "make up BUILD=--no-build   same on the default port (sim too)"
+	@echo ""
+	@echo "A ready SD card"
+	@echo "make image    Raspberry Pi OS with the whole ground station on it (PASSWORD=..., see README)"
+	@echo "make flash    write the image to an SD card (DEV=/dev/sdX)"
 
 # --wait returns once the backend's healthcheck passes, so a broken start
 # fails here instead of silently in the background.
@@ -121,16 +125,20 @@ tiles:
 EMU_HOLD := starpi-binfmt-hold
 EMU_ARCH := $(word 2,$(subst /, ,$(PLATFORM)))
 
+define with_qemu
+@docker rm -f $(EMU_HOLD) >/dev/null 2>&1; \
+trap 'docker rm -f $(EMU_HOLD) >/dev/null 2>&1' EXIT; \
+docker run -d --rm --privileged --name $(EMU_HOLD) alpine \
+	sh -c 'mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && touch /ready && sleep infinity' >/dev/null && \
+for i in $$(seq 50); do docker exec $(EMU_HOLD) test -f /ready 2>/dev/null && break; sleep 0.2; done && \
+docker exec $(EMU_HOLD) test -f /ready && \
+docker run --privileged --rm tonistiigi/binfmt --install $(EMU_ARCH) >/dev/null && \
+echo "QEMU ready for $(PLATFORM)" && \
+$(1)
+endef
+
 images:
-	@docker rm -f $(EMU_HOLD) >/dev/null 2>&1; \
-	trap 'docker rm -f $(EMU_HOLD) >/dev/null 2>&1' EXIT; \
-	docker run -d --rm --privileged --name $(EMU_HOLD) alpine \
-		sh -c 'mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && touch /ready && sleep infinity' >/dev/null && \
-	for i in $$(seq 50); do docker exec $(EMU_HOLD) test -f /ready 2>/dev/null && break; sleep 0.2; done && \
-	docker exec $(EMU_HOLD) test -f /ready && \
-	docker run --privileged --rm tonistiigi/binfmt --install $(EMU_ARCH) >/dev/null && \
-	echo "QEMU ready for $(PLATFORM)" && \
-	COMPOSE_PROFILES=lora DOCKER_DEFAULT_PLATFORM=$(PLATFORM) $(COMPOSE) build
+	$(call with_qemu,COMPOSE_PROFILES=lora DOCKER_DEFAULT_PLATFORM=$(PLATFORM) $(COMPOSE) build)
 
 bundle: images
 	docker save $(IMAGES) | gzip > $(BUNDLE)
@@ -142,3 +150,46 @@ deploy: images
 
 load:
 	gunzip -c $(BUNDLE) | docker load
+
+# SD card image of the whole ground station (scripts/build-image.sh): Raspberry
+# Pi OS Lite, Docker, a clone of this branch that pulls from origin, and the
+# images above, started on first boot by scripts/firstboot.sh. The OS download
+# is kept in $(IMAGE_DIR)/; delete it there to get a newer release.
+OS_IMAGE_URL ?= https://downloads.raspberrypi.com/raspios_lite_arm64_latest
+IMAGE_DIR := image
+IMAGE ?= starpi.img.xz
+BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
+# The card's links: ble,lora, or SP_LINKS from the command line, never this
+# computer's .env (often sim).
+IMAGE_LINKS := $(if $(filter command line,$(origin SP_LINKS)),$(SP_LINKS),ble$(comma)lora)
+# Passed to the build through the environment, so any character is safe.
+export PASSWORD PI_PASSWORD SSID WIFI_COUNTRY WIFI_SSID WIFI_PASSWORD
+
+image:
+	@if [ $${#PASSWORD} -lt 8 ] || [ $${#PASSWORD} -gt 63 ]; then \
+		echo "make image PASSWORD=... (8 to 63 characters: the hotspot's, and the starpi login's unless PI_PASSWORD)"; exit 1; fi
+	@git diff --quiet HEAD || echo "Uncommitted changes go into the images but not into the clone on the card."
+	$(MAKE) bundle
+	mkdir -p $(IMAGE_DIR)
+	[ -f $(IMAGE_DIR)/raspios.img.xz ] || { curl -fL -o $(IMAGE_DIR)/raspios.img.xz.part $(OS_IMAGE_URL) && \
+		mv $(IMAGE_DIR)/raspios.img.xz.part $(IMAGE_DIR)/raspios.img.xz; }
+	rm -rf $(IMAGE_DIR)/repo
+	git clone -q --branch $(BRANCH) . $(IMAGE_DIR)/repo
+	git -C $(IMAGE_DIR)/repo remote set-url origin "$$(git remote get-url origin)"
+	git -C $(IMAGE_DIR)/repo fetch -q --prune origin
+	git -C $(IMAGE_DIR)/repo branch -q -u origin/$(BRANCH) || echo "$(BRANCH) is not on origin yet: push it before pulling on the Pi."
+	$(call with_qemu,SSH_KEYS="$(if $(SSH_KEY),$$(cat $(SSH_KEY)))" docker run --rm --privileged -v /dev:/dev \
+		-v "$(CURDIR)":/work -w /work -e PASSWORD -e PI_PASSWORD -e SSID -e WIFI_COUNTRY -e WIFI_SSID \
+		-e WIFI_PASSWORD -e SP_LINKS=$(IMAGE_LINKS) -e SSH_KEYS -e OWNER=$$(id -u):$$(id -g) debian:trixie \
+		sh scripts/build-image.sh $(IMAGE_DIR)/raspios.img.xz $(BUNDLE) $(IMAGE_DIR)/repo $(IMAGE))
+	@echo "Flash $(IMAGE) with Raspberry Pi Imager (no OS customisation) or: make flash DEV=/dev/sdX"
+
+# Writes the image to a whole SD card, never a partition: DEV=/dev/sdX or
+# /dev/mmcblk0, as lsblk lists it. Asks before writing.
+flash:
+	@[ -b "$(DEV)" ] && [ "$$(lsblk -dno TYPE $(DEV))" = disk ] || { echo "make flash DEV=/dev/sdX (a whole disk, see lsblk)"; exit 1; }
+	@[ "$$(lsblk -dno RM $(DEV) | tr -d ' ')" = 1 ] || case "$(DEV)" in /dev/mmcblk*) ;; *) echo "$(DEV) is not removable, refusing."; exit 1;; esac
+	@! lsblk -no MOUNTPOINTS $(DEV) | grep -q . || { echo "$(DEV) has mounted partitions, unmount them first."; exit 1; }
+	@lsblk -dno NAME,SIZE,MODEL $(DEV); printf "Erase $(DEV) and write $(IMAGE) to it? [y/N] "; read a; [ "$$a" = y ]
+	xz -dc $(IMAGE) | sudo dd of=$(DEV) bs=4M conv=fsync status=progress
+	@echo "Done: put the card in the Pi. First boot takes a few minutes, then http://starpi.local"

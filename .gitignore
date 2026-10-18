@@ -6,3 +6,6 @@ openmct/tiles/*
 !openmct/tiles/README.md
 temp/
 run/
+image/
+starpi.img.xz
+starpi.img

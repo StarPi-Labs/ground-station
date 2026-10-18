@@ -137,6 +137,52 @@ make pi    # or, on port 8040: make up BUILD=--no-build (make sim BUILD=--no-bui
 The images target 64-bit Raspberry Pi OS. For a 32-bit OS, add
 `PLATFORM=linux/arm/v7`.
 
+### A ready SD card
+
+`make image` writes `starpi.img.xz`, a whole Raspberry Pi OS Lite (64-bit)
+with the ground station on it. Flash it on any card and the Pi boots into a
+working station; a broken card is replaced in the time it takes to flash one.
+
+```sh
+make image PASSWORD=choose-a-password   # hotspot and login password, 8 to 63 characters
+make flash DEV=/dev/sdX                 # or Raspberry Pi Imager, "Use custom", no OS customisation
+```
+
+On the card:
+
+- user `starpi` (password `PASSWORD`, or `PI_PASSWORD`), hostname `starpi`,
+  SSH on, SPI on for the LoRa radio;
+- Docker, and the images built from this working tree (`make bundle`);
+- `~/ground-station`, a clone of the current branch that pulls from `origin`,
+  with an `.env` holding `SP_LINKS` (`ble,lora` unless given) and
+  `FRONTEND_PORT=80`.
+
+On the first boot, which takes a few minutes, `scripts/firstboot.sh` sets the
+Wi-Fi country, turns on the hotspot (`make hotspot`) and the wired network
+(`make lan`), loads the images and runs `make pi`. From then on the containers
+start with Docker on every boot. Its log: `journalctl -u starpi-firstboot`.
+
+Then, with no setup on the laptop: plug in a cable or join the `StarPi`
+network, open <http://starpi.local> (or <http://10.43.0.1> on the cable,
+<http://10.42.0.1> on Wi-Fi) and `ssh starpi@starpi.local`.
+
+Settings, all optional but `PASSWORD`: `SSID` (`StarPi`), `WIFI_COUNTRY`
+(`IT`), `SSH_KEY` (a public key file for passwordless SSH), `BRANCH` (the
+current one), `SP_LINKS`. `WIFI_SSID` and `WIFI_PASSWORD` save a network with
+internet, below the hotspot, for updating the Pi in place:
+
+```sh
+sudo nmcli connection down starpi-hotspot   # join WIFI_SSID instead, until the next boot
+cd ~/ground-station && git pull && make up  # rebuilds on the Pi, port 80 from .env
+sudo nmcli connection up starpi-hotspot
+```
+
+`make deploy PI=starpi@starpi.local` keeps working without that network.
+Uncommitted changes go into the images but not into the clone, and the
+branch must be on `origin` for `git pull`; `make image` warns about both. The
+Raspberry Pi OS download is kept in `image/`: delete `image/raspios.img.xz`
+for a newer release.
+
 ### Field Wi-Fi
 
 In the field there is no router, so the Pi can host its own Wi-Fi network:
