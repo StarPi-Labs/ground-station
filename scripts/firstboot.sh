@@ -51,4 +51,4 @@ rm -f starpi-images.tar.gz "$ENV"
 runuser -u "$USER_NAME" -- make pi ||
     runuser -u "$USER_NAME" -- docker compose up -d ||
     echo "The stack did not start, see make ps and make logs."
-echo "Ground station ready: http://starpi.local"
+echo "Ground station ready: http://starpi.gs"

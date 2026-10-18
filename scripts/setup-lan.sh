@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Makes the Pi's Ethernet port serve its own network, so a laptop on a plain
 # cable reaches the dashboard and SSH with no router and no network settings:
-# http://starpi.local:8040, ssh starpi@starpi.local (or 10.43.0.1).
+# http://starpi.gs:8040, ssh starpi@starpi.gs (or 10.43.0.1).
 #
 # Usage (as root): sh scripts/setup-lan.sh [interface]
 #
@@ -17,8 +17,9 @@ IFACE=${1:-eth0}
 CON=starpi-lan
 # Next to the hotspot's 10.42.0.0/24, so both can be up at once.
 ADDRESS=10.43.0.1/24
-# Answered by this network's own DNS server, for devices without mDNS.
-DOMAIN=starpi.local
+# Answered by this network's own DNS server; not .local, as in setup-hotspot.sh.
+DOMAIN=starpi.gs
+MDNS_NAME=starpi.local
 DNSMASQ_CONF=/etc/NetworkManager/dnsmasq-shared.d/$CON.conf
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -62,7 +63,8 @@ nmcli connection add \
 # too: naming the interface plus localise-queries makes each network answer
 # with the Pi's address on that network, never the other one's.
 mkdir -p "$(dirname "$DNSMASQ_CONF")"
-printf 'interface-name=%s,%s\nlocalise-queries\n' "$DOMAIN" "$IFACE" > "$DNSMASQ_CONF"
+printf 'interface-name=%s,%s\ninterface-name=%s,%s\nlocalise-queries\n' \
+    "$DOMAIN" "$IFACE" "$MDNS_NAME" "$IFACE" > "$DNSMASQ_CONF"
 
 # Unlike the hotspot this starts right away: a session over Wi-Fi is not
 # touched, and one over this cable was not working without it anyway.

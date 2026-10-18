@@ -71,7 +71,7 @@ sim2:
 	$(MAKE) sim SIM_LINKS=sim-ble,sim-lora
 
 # On the Pi: the images come from `make deploy`/`make load` and are never built
-# there, and the dashboard answers on the default HTTP port (http://starpi.local).
+# there, and the dashboard answers on the default HTTP port (http://starpi.gs on its networks).
 pi:
 	$(MAKE) up BUILD=--no-build FRONTEND_PORT=80
 
@@ -192,4 +192,4 @@ flash:
 	@! lsblk -no MOUNTPOINTS $(DEV) | grep -q . || { echo "$(DEV) has mounted partitions, unmount them first."; exit 1; }
 	@lsblk -dno NAME,SIZE,MODEL $(DEV); printf "Erase $(DEV) and write $(IMAGE) to it? [y/N] "; read a; [ "$$a" = y ]
 	xz -dc $(IMAGE) | sudo dd of=$(DEV) bs=4M conv=fsync status=progress
-	@echo "Done: put the card in the Pi. First boot takes a few minutes, then http://starpi.local"
+	@echo "Done: put the card in the Pi. First boot takes a few minutes, then http://starpi.gs on its network"

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Turns the Pi's Wi-Fi into an access point that comes up on every boot, so
 # phones and laptops in the field reach the dashboard without any router:
-# join the network, then open http://starpi.local:8040.
+# join the network, then open http://starpi.gs:8040.
 #
 # Usage (as root): sh scripts/setup-hotspot.sh <password> [ssid]
 #
@@ -16,8 +16,11 @@ SSID=${2:-StarPi}
 CON=starpi-hotspot
 IFACE=wlan0
 ADDRESS=10.42.0.1/24
-# Answered by the hotspot's own DNS server, for devices without mDNS.
-DOMAIN=starpi.local
+# Answered by the hotspot's own DNS server. Not a .local name: systemd-resolved
+# and others send .local only to mDNS, never to this server. starpi.local is
+# answered too, for devices that do ask it.
+DOMAIN=starpi.gs
+MDNS_NAME=starpi.local
 DNSMASQ_CONF=/etc/NetworkManager/dnsmasq-shared.d/$CON.conf
 # 5 GHz keeps the hotspot off the 2.4 GHz band that the BLE rocket link shares
 # with Wi-Fi on the Pi's single radio. For 2.4 GHz-only devices use band bg,
@@ -80,7 +83,8 @@ nmcli connection add \
 # same files, and localise-queries answers each network with the Pi's address
 # on it.
 mkdir -p "$(dirname "$DNSMASQ_CONF")"
-printf 'interface-name=%s,%s\nlocalise-queries\n' "$DOMAIN" "$IFACE" > "$DNSMASQ_CONF"
+printf 'interface-name=%s,%s\ninterface-name=%s,%s\nlocalise-queries\n' \
+    "$DOMAIN" "$IFACE" "$MDNS_NAME" "$IFACE" > "$DNSMASQ_CONF"
 
 echo "Hotspot ready, it starts on the next boot (or now: nmcli connection up $CON)."
 echo "Dashboard: http://$DOMAIN:8040 (or http://${ADDRESS%/*}:8040)"

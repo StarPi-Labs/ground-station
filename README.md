@@ -128,7 +128,7 @@ itself through privileged containers, so it is slower than a native build.
 No network path to the Pi? `make bundle` writes `starpi-images.tar.gz`
 instead. Copy it next to the Makefile on the Pi and run `make load` there.
 Either way, start the stack on the Pi without rebuilding, with the dashboard
-on the default HTTP port (<http://starpi.local>):
+on the default HTTP port (<http://starpi.gs> on its own networks):
 
 ```sh
 make pi    # or, on port 8040: make up BUILD=--no-build (make sim BUILD=--no-build)
@@ -163,8 +163,8 @@ Wi-Fi country, turns on the hotspot (`make hotspot`) and the wired network
 start with Docker on every boot. Its log: `journalctl -u starpi-firstboot`.
 
 Then, with no setup on the laptop: plug in a cable or join the `StarPi`
-network, open <http://starpi.local> (or <http://10.43.0.1> on the cable,
-<http://10.42.0.1> on Wi-Fi) and `ssh starpi@starpi.local`.
+network, open <http://starpi.gs> (or <http://10.43.0.1> on the cable,
+<http://10.42.0.1> on Wi-Fi) and `ssh starpi@starpi.gs`.
 
 Settings, all optional but `PASSWORD`: `SSID` (`StarPi`), `WIFI_COUNTRY`
 (`IT`), `SSH_KEY` (a public key file for passwordless SSH), `BRANCH` (the
@@ -194,8 +194,11 @@ make hotspot PASSWORD=choose-a-password   # SSID=StarPi by default
 From the next boot on, the Pi broadcasts `StarPi` (WPA2, 5 GHz channel 36, to
 stay clear of the 2.4 GHz BLE link) instead of joining another network. Devices
 that join get an address over DHCP and reach the dashboard at
-<http://starpi.local> (or <http://10.42.0.1>) after `make pi`, and SSH at
-`starpi.local`; the hotspot's DNS server answers that name. The containers
+<http://starpi.gs> (or <http://10.42.0.1>) after `make pi`, and SSH at
+`starpi.gs`; the hotspot's DNS server answers that name. It is not a `.local`
+name on purpose: systemd-resolved, among others, asks only mDNS for `.local`,
+so `starpi.local` works only where mDNS reaches the Pi (a home network,
+`make deploy`). The containers
 restart with Docker on boot, so the dashboard comes back on its own. Saved
 networks stay as a fallback if the hotspot cannot start. `sudo nmcli connection down
 starpi-hotspot` switches back to them until the next boot, and `sudo nmcli
@@ -209,8 +212,8 @@ make lan            # IFACE=eth0 by default
 
 The Pi's Ethernet port then serves its own network (`10.43.0.1/24`, with
 DHCP), right away and on every boot: the laptop needs no settings and reaches
-the dashboard at <http://starpi.local> (or <http://10.43.0.1>) after `make pi`, and
-SSH at `starpi.local`. As on the hotspot, the Pi's DNS server answers that name,
+the dashboard at <http://starpi.gs> (or <http://10.43.0.1>) after `make pi`, and
+SSH at `starpi.gs`. As on the hotspot, the Pi's DNS server answers that name,
 each network with the Pi's own address on it. The port hands out addresses, so
 don't plug it into a router while this is on; `sudo nmcli connection delete
 starpi-lan` undoes it.
