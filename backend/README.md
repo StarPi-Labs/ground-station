@@ -264,6 +264,8 @@ In `/api/health` and `/api/links` the link reports:
 | `packets`, `lost_packets` | LoRa data packets received, and missed (gaps in the rocket's sequence numbers) |
 | `bad_lines` | Lines from `radio_app` that could not be read |
 | `tilt_deg` | The rocket's tilt from vertical in the last packet (see below) |
+| `armed` | Bit 7 of the packet's state: the system is armed, so liftoff detection is on (`null` until a packet arrives) |
+| `sensors` | `{"imu": bool, "baro": bool}` from the packet's `sensor_status`: the rocket's ground health check passed (`null` until a packet arrives, or with an older `radio_app`) |
 | `rssi_dbm` | Signal strength of the last packet at the ground station, dBm (`null` until one arrives, or with a `radio_app` that does not report it) |
 | `median_bps` | `radio_app`'s median bit rate over the last packets |
 
@@ -277,7 +279,7 @@ the API and the websocket see the same messages as over BLE:
 | `imu.altitude`, `imu.vspeed` | `T_ALT_SPEED` | `S_IMU` | `P_FVEC2`: x altitude (m), y vertical speed (m/s) |
 | `baro.p1`, `baro.p2` | `T_PRESSURE` | `S_BARO` | `P_FVEC2`: the two barometers (mbar) |
 | `gps.latitude`, `gps.longitude` | `T_GPS` | `S_GPS` | `P_FVEC2`: x latitude, y longitude (degrees) |
-| `state` | `T_ROCKET_STATE` | `S_PARA` | `P_ROCKET_STATE` |
+| `state & 0x7f` | `T_ROCKET_STATE` | `S_PARA` | `P_ROCKET_STATE` (bit 7, the armed flag, goes to `armed` in the link status) |
 
 * Units are the firmware's, as over BLE. Altitude, speed and pressure travel
   as 16-bit floats (11 significant bits): pressure in 0.5 mbar steps, altitude
@@ -298,8 +300,9 @@ the API and the websocket see the same messages as over BLE:
 * Pressure and GPS groups that are all zeros (not measured yet, no fix) and
   values that are not finite numbers are skipped.
 * Not converted, because no `LogMessage` means the same: `imu.attitude`, the
-  tilt from vertical in degrees (`T_ORIENTATION` is roll, pitch and yaw), only
-  shown as `tilt_deg` in the link status. Acceleration, angular rate,
+  tilt from vertical in degrees (`T_ORIENTATION` is roll, pitch and yaw), the
+  armed bit and `sensor_status`, only shown as `tilt_deg`, `armed` and
+  `sensors` in the link status. Acceleration, angular rate,
   orientation, temperature and the system log are not in the LoRa packet at
   all.
 

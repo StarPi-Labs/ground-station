@@ -19,14 +19,16 @@ wire bytes as on BLE:
     imu.altitude, imu.vspeed      T_ALT_SPEED       S_IMU   P_FVEC2 m, m/s
     baro.p1, baro.p2              T_PRESSURE        S_BARO  P_FVEC2 mbar, mbar
     gps.latitude, gps.longitude   T_GPS             S_GPS   P_FVEC2 degrees
-    state                         T_ROCKET_STATE    S_PARA  P_ROCKET_STATE
+    state & 0x7f                  T_ROCKET_STATE    S_PARA  P_ROCKET_STATE
     ============================  ================  ======  ==================
 
 Values and units are the firmware's, as on BLE, but altitude, speed and
 pressure travel as float16: 11 significant bits, so pressure comes in 0.5 mbar
 steps and altitude in 1 m steps above 1024 m, 2 m above 2048 m.
-``imu.attitude`` (tilt from vertical) has no ``LogMessage`` equivalent and is
-only reported in :meth:`LoRaLink.status`.
+``imu.attitude`` (tilt from vertical), bit 7 of ``state`` (the system is
+armed) and ``sensor_status`` (bit 0 IMU healthy, bit 1 barometers healthy)
+have no ``LogMessage`` equivalent and are only reported in
+:meth:`LoRaLink.status`.
 
 Timestamps are the rocket's clock: a group was sampled at ``tx_time_ms +
 dt_ms``, the rocket state (which has no ``dt``) is stamped ``tx_time_ms``.
@@ -78,6 +80,11 @@ GROUPS: dict[str, tuple[tuple[str, str], MessageType, SourceSubsystem]] = {
 # GPS fix. Altitude 0 m at 0 m/s is a real reading (the pad), so not "imu".
 ZERO_MEANS_UNSET = ("baro", "gps")
 
+# Bit 7 of the packet's state byte is the armed flag, the rest the RocketState.
+ARMED_BIT = 0x80
+# sensor_status bits.
+SENSOR_BITS = {"imu": 0x01, "baro": 0x02}
+
 # The rocket's commands. radio_app queues them for the ground station's next
 # transmit window and LoRa has no acknowledgement, so "sent" means handed over.
 COMMANDS = dict(ROCKET_COMMANDS)
@@ -100,6 +107,10 @@ class LoRaLink(Link):
         self._bad_lines = 0
         self._last_number: int | None = None
         self._tilt_deg: float | None = None
+        # From the last packet: whether the system is armed (liftoff detection
+        # enabled), and which sensors passed the rocket's ground health check.
+        self._armed: bool | None = None
+        self._sensors: dict[str, bool] | None = None
         # How well radio_app hears the rocket, from its last packet.
         self._rssi_dbm: float | None = None
         self._median_bps: float | None = None
@@ -139,6 +150,8 @@ class LoRaLink(Link):
                 "lost_packets": self._lost,
                 "bad_lines": self._bad_lines,
                 "tilt_deg": self._tilt_deg,
+                "armed": self._armed,
+                "sensors": self._sensors,
                 "rssi_dbm": self._rssi_dbm,
                 "median_bps": self._median_bps,
             }
@@ -222,6 +235,15 @@ class LoRaLink(Link):
         self._last_number = number
         self._packets += 1
         self._tilt_deg = packet["imu"]["attitude"]
+        raw_state = int(packet["state"])
+        self._armed = bool(raw_state & ARMED_BIT)
+        # Absent from a radio_app older than the firmware's sensor_status.
+        sensor_status = packet.get("sensor_status")
+        self._sensors = (
+            None
+            if sensor_status is None
+            else {name: bool(int(sensor_status) & bit) for name, bit in SENSOR_BITS.items()}
+        )
         # Later additions to radio_app's data line: absent from an older one.
         self._rssi_dbm = packet.get("rssi_dbm")
         self._median_bps = packet.get("median_bps")
@@ -250,7 +272,7 @@ class LoRaLink(Link):
                     )
                 )
 
-        state = int(packet["state"])
+        state = raw_state & ~ARMED_BIT & 0xFF
         if self._due(MessageType.T_ROCKET_STATE, state, tx_time_us):
             frames.append(
                 LogMessage(
@@ -286,6 +308,8 @@ class LoRaLink(Link):
         self._last_number = None
         self._rssi_dbm = None
         self._median_bps = None
+        self._armed = None
+        self._sensors = None
 
     async def _sleep_before_retry(self) -> None:
         try:
