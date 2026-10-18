@@ -340,6 +340,7 @@ void telemetry_publish_data(const LoRaDataPacket& packet)
 	j["number"] = header.number;
 	j["tx_time_ms"] = u48le_to_u64(header.tx_time);
 	j["state"] = (uint8_t)packet.state;
+	j["sensor_status"] = (uint8_t)packet.sensor_status;
 	j["imu"] = {
 		{"altitude", half_to_json(packet.imu.altitude)},
 		{"vspeed", half_to_json(packet.imu.vspeed)},
