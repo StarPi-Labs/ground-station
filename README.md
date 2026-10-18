@@ -294,7 +294,11 @@ There are two, to compare:
   conditions*. It lives in the browser's local storage: delete the *StarPi
   Flight Dashboard* folder and reload to get the original back.
 * **StarPi › Launch Control** (the page Open MCT opens on) is the custom
-  view: the same data in a purpose-built layout, fixed but denser.
+  view: the same data in a purpose-built layout, fixed but denser. Its header
+  shows whether the rocket is armed, from the LoRa link only (BLE never
+  carries the flag): a solid red ARMED, a green DISARMED, or a dashed box when
+  it is not heard live (no LoRa link, no packet yet, or LoRa down, which shows
+  the last flag heard), with the rocket's own sensor check beside it.
 
 **StarPi › Widgets › Rocket Attitude** (also on the standard dashboard and in
 Launch Control) is a 3D model of the rocket turned to its reported

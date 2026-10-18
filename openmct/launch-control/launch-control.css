@@ -211,6 +211,59 @@
     letter-spacing: -0.01em;
 }
 
+/* Arming: the one header block that must read at a glance. Armed is a solid
+   alarm field, disarmed an ok outline, anything not heard live a dashed box. */
+.lc-arm {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 12rem;
+    padding: 6px 14px;
+    border: 2px dashed var(--lc-ink-3);
+    color: var(--lc-ink-2);
+}
+
+.lc-arm__label {
+    font-size: 12.5px;
+    opacity: 0.85;
+}
+
+.lc-arm__state {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.04em;
+}
+
+.lc-arm__note {
+    font-size: 12.5px;
+    white-space: nowrap;
+}
+
+.starpi-lc .lc-arm.is-armed {
+    border: 2px solid var(--lc-alarm);
+    background: var(--lc-alarm);
+    color: var(--lc-bg);
+}
+
+.starpi-lc .lc-arm.is-armed .is-ok,
+.starpi-lc .lc-arm.is-armed .is-alarm {
+    color: inherit;
+    font-weight: 700;
+}
+
+.starpi-lc .lc-arm.is-armed-stale {
+    border: 2px dashed var(--lc-alarm);
+    color: var(--lc-alarm);
+}
+
+.starpi-lc .lc-arm.is-safe {
+    border: 2px solid var(--lc-ok);
+    color: var(--lc-ok);
+}
+
+:root[data-theme="light"] .starpi-lc .lc-arm.is-armed { color: var(--lc-panel); }
+
 .lc-phases {
     display: flex;
     flex: 1 1 32rem;

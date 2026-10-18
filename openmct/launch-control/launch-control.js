@@ -154,6 +154,11 @@
                     <span class="lc-clock__label" data-ref="clock-label">Mission time</span>
                     <span class="lc-num lc-clock__value" data-ref="clock">--:--.-</span>
                 </div>
+                <div class="lc-arm is-unknown" data-ref="arm" role="status" aria-live="polite">
+                    <span class="lc-arm__label">Arming · LoRa</span>
+                    <span class="lc-arm__state" data-ref="arm-state">UNKNOWN</span>
+                    <span class="lc-arm__note" data-ref="arm-note">&nbsp;</span>
+                </div>
                 <ol class="lc-phases" data-ref="phases" aria-label="Flight phase">
                     ${Object.entries(window.StarPiFlight.PHASE_LABELS).map(([key, label]) => `
                         <li class="lc-phase" data-phase="${key}">
@@ -581,6 +586,49 @@
             }
         }
 
+        // The armed flag only comes over LoRa (bit 7 of the packet state):
+        // BLE never carries it, so without LoRa the badge says unknown rather
+        // than guessing. A flag from a LoRa link that has lost the rocket is
+        // shown as the last one heard, never as the current state.
+        renderArm(links) {
+            const { refs } = this;
+            const lora = links.find((l) => 'armed' in l);
+            let state = 'unknown';
+            let label = 'UNKNOWN';
+            let note;
+            if (!lora) {
+                note = 'no LoRa link';
+            } else if (lora.armed === null || lora.armed === undefined) {
+                note = lora.connected ? 'waiting for a LoRa packet' : 'LoRa down, never heard';
+            } else {
+                label = lora.armed ? 'ARMED' : 'DISARMED';
+                if (lora.connected) {
+                    state = lora.armed ? 'armed' : 'safe';
+                    note = lora.armed ? 'liftoff detection on' : 'liftoff detection off';
+                } else {
+                    state = lora.armed ? 'armed-stale' : 'unknown';
+                    note = 'last heard · LoRa down';
+                }
+            }
+            // The rocket's own ground health check, sent with the flag.
+            const sensors = lora?.connected ? lora.sensors : null;
+            const failed = sensors ? Object.entries(sensors).filter(([, ok]) => !ok).map(([name]) => name.toUpperCase()) : [];
+            const html = `${escapeHtml(note)}${sensors
+                ? ` · <span class="${failed.length ? 'is-alarm' : 'is-ok'}">${failed.length ? `${failed.join(', ')} failed` : 'sensors ok'}</span>`
+                : ''}`;
+            const key = `${state}|${label}|${html}`;
+            if (key === this.armKey) {
+                return;
+            }
+            this.armKey = key;
+            refs.arm.className = `lc-arm is-${state}`;
+            refs.armState.textContent = label;
+            refs.armNote.innerHTML = html;
+            refs.arm.title = lora
+                ? `${lora.name}: armed ${lora.armed ?? 'unknown'}, sensors ${JSON.stringify(lora.sensors ?? 'unknown')}`
+                : 'The armed flag only comes over LoRa';
+        }
+
         renderStatus(flight, realtime, now) {
             const { refs } = this;
 
@@ -631,6 +679,8 @@
                 refs.links.innerHTML = linksHtml;
             }
             refs.links.title = links.map((l) => `${l.name}: ${l.connected ? 'up' : l.last_error || 'down'}`).join('; ');
+
+            this.renderArm(station.ok ? links : []);
 
             const errors = health
                 ? health.decode_errors + health.store_errors + health.dropped_events
