@@ -352,12 +352,14 @@ make up                                      # or make deploy PI=...
   across, ~12 MB for a city centre), drawn by MapLibre GL with Protomaps' dark
   style. Its fonts and icons are downloaded alongside. The browser loads
   MapLibre (~1 MB) only once a map is switched on.
-* **Satellite**: raster tiles, by default EOX's
-  [Sentinel-2 cloudless](https://s2maps.eu) (CC BY-NC-SA 4.0). It is free and
-  worldwide but only 10 m per pixel, so fields show and a pad doesn't. For
-  more detail, point `SAT_URL` at a sharper source you are allowed to store,
-  such as your country's open orthophotos, and set `SAT_MAXZOOM` and
-  `SAT_ATTRIBUTION` to match (`SAT_URL=` skips satellite). See
+* **Satellite**: two raster layers. The wide one is EOX's
+  [Sentinel-2 cloudless](https://s2maps.eu) (CC BY-NC-SA 4.0), free and
+  worldwide but only 10 m per pixel. Within `DETAIL_RADIUS_KM` (2.5 km) of
+  the pad, zoom 15-18, it is covered by the Portuguese DGT's OrtoSat 2023
+  (30 cm per pixel, mainland Portugal only, from its WMS): pads, tracks and
+  single trees show. About 2,500 tiles, a few minutes to download. Outside
+  Portugal point `DETAIL_URL` at another source you are allowed to store, or
+  set `DETAIL_URL=` to skip it (`SAT_URL=` skips satellite). See
   `scripts/fetch-tiles.py`.
 
 Without `openmct/tiles/site.json` there is no toggle and the plot is drawn on

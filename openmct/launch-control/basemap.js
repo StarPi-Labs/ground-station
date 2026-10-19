@@ -98,6 +98,26 @@
                 metadata: { starpi: 'satellite' },
                 layout: { visibility: visibility('satellite') }
             });
+            // Sharper imagery near the pad, over the wide layer where it has tiles.
+            const { detail } = site.satellite;
+            if (detail) {
+                style.sources.detail = {
+                    type: 'raster',
+                    tiles: [base + detail.tiles],
+                    tileSize: 256,
+                    minzoom: detail.minzoom,
+                    maxzoom: detail.maxzoom,
+                    bounds: detail.bounds,
+                    attribution: detail.attribution
+                };
+                style.layers.push({
+                    id: 'satellite-detail',
+                    type: 'raster',
+                    source: 'detail',
+                    metadata: { starpi: 'satellite' },
+                    layout: { visibility: visibility('satellite') }
+                });
+            }
         }
 
         return style;

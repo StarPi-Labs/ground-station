@@ -9,18 +9,26 @@ or deploy as usual. What it writes:
                     the area with the pmtiles CLI (run from its Docker image)
   fonts/, sprites/  label glyphs and icons for the Protomaps dark style
   satellite/        raster tiles {z}/{x}/{y}.jpg, from SAT_URL
+  detail/           sharper raster tiles near the pad, from DETAIL_URL, drawn
+                    over satellite/ at the higher zooms
   site.json         what the frontend reads: centre, bounds, layers, credits
   LICENSES.md       the licence of each of the above, with the fonts' and
                     icons' licence texts next to them
 
 Protomaps allows extracting from its builds; the default satellite source
-(EOX Sentinel-2 cloudless) is CC BY-NC-SA 4.0, 10 m per pixel. Point SAT_URL
-at a sharper source you are allowed to store (a national orthophoto) for
-more detail. SAT_URL= (empty) skips satellite.
+(EOX Sentinel-2 cloudless) is CC BY-NC-SA 4.0, 10 m per pixel, worldwide.
+The default detail source is the Portuguese DGT's OrtoSat 2023 (Pleiades Neo,
+30 cm per pixel, mainland Portugal only), from its WMS: elsewhere point
+DETAIL_URL at another source you are allowed to store, or set DETAIL_URL=
+(empty) to skip it. SAT_URL= skips satellite and detail both. A URL takes
+{z}/{x}/{y} for a tile server or {bbox} (EPSG:3857 metres, minx,miny,maxx,maxy)
+for a WMS GetMap with WIDTH=HEIGHT=256.
 
 Usage: fetch-tiles.py LAT LON [RADIUS_KM]
 Env:   MAP_MAXZOOM (15), SAT_URL, SAT_MINZOOM (10), SAT_MAXZOOM (14),
-       SAT_ATTRIBUTION (HTML, shown on the map), SAT_LICENSE, PMTILES_IMAGE
+       SAT_ATTRIBUTION (HTML, shown on the map), SAT_LICENSE,
+       DETAIL_URL, DETAIL_RADIUS_KM (2.5), DETAIL_MINZOOM (15),
+       DETAIL_MAXZOOM (18), DETAIL_ATTRIBUTION, DETAIL_LICENSE, PMTILES_IMAGE
 """
 
 import json
@@ -30,6 +38,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -59,6 +68,24 @@ SAT_ATTRIBUTION = os.environ.get(
 SAT_LICENSE = os.environ.get(
     "SAT_LICENSE",
     "CC BY-NC-SA 4.0, https://creativecommons.org/licenses/by-nc-sa/4.0/ (non-commercial use only)",
+)
+DETAIL_URL = os.environ.get(
+    "DETAIL_URL",
+    "https://ortos.dgterritorio.gov.pt/wms/ortosat2023?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap"
+    "&LAYERS=ortoSat2023-CorVerdadeira&STYLES=&CRS=EPSG:3857&BBOX={bbox}"
+    "&WIDTH=256&HEIGHT=256&FORMAT=image/jpeg",
+)
+DETAIL_RADIUS_KM = float(os.environ.get("DETAIL_RADIUS_KM", "2.5"))
+DETAIL_MINZOOM = int(os.environ.get("DETAIL_MINZOOM", "15"))
+DETAIL_MAXZOOM = int(os.environ.get("DETAIL_MAXZOOM", "18"))
+DETAIL_ATTRIBUTION = os.environ.get(
+    "DETAIL_ATTRIBUTION",
+    '<a href="https://www.dgterritorio.gov.pt">OrtoSat 2023 © DGT</a>',
+)
+DETAIL_LICENSE = os.environ.get(
+    "DETAIL_LICENSE",
+    "Direção-Geral do Território open data; its WMS states no fees and no access"
+    " constraints. Credit DGT.",
 )
 MAP_ATTRIBUTION = (
     '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>,'
@@ -121,26 +148,41 @@ def fetch_assets() -> None:
     download(jobs)
 
 
-def fetch_satellite(box: tuple[float, float, float, float]) -> int:
+def tile_bbox(x: int, y: int, z: int) -> str:
+    """Web Mercator bounds of tile x, y, z in metres: minx,miny,maxx,maxy."""
+    half = 20037508.342789244
+    size = 2 * half / 2**z
+    return f"{x * size - half:.3f},{half - (y + 1) * size:.3f},{(x + 1) * size - half:.3f},{half - y * size:.3f}"
+
+
+def fetch_raster(name: str, url: str, box: tuple[float, float, float, float], zooms: range) -> None:
     west, south, east, north = box
     jobs = []
-    for z in range(SAT_MINZOOM, SAT_MAXZOOM + 1):
+    for z in zooms:
         x0, y0 = tile(west, north, z)
         x1, y1 = tile(east, south, z)
         for x in range(x0, x1 + 1):
             for y in range(y0, y1 + 1):
-                url = SAT_URL.format(z=z, x=x, y=y)
-                jobs.append((url, OUT / "satellite" / str(z) / str(x) / f"{y}.jpg"))
-    print(f"satellite: {len(jobs)} tiles, zoom {SAT_MINZOOM}-{SAT_MAXZOOM}")
+                source = url.format(z=z, x=x, y=y, bbox=tile_bbox(x, y, z))
+                jobs.append((source, OUT / name / str(z) / str(x) / f"{y}.jpg"))
+    print(f"{name}: {len(jobs)} tiles, zoom {zooms.start}-{zooms.stop - 1}")
     download(jobs)
-    return len(jobs)
 
 
 def download(jobs: list[tuple[str, Path]]) -> None:
     def one(job: tuple[str, Path]) -> None:
         url, path = job
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(get(url))
+        # Thousands of requests to a public WMS, which resets a connection
+        # now and then: retry, backing off.
+        for attempt in range(6):
+            try:
+                path.write_bytes(get(url))
+                return
+            except OSError:
+                if attempt == 5:
+                    raise
+                time.sleep(2**attempt)
 
     # A few at a time: these are free services.
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -166,6 +208,10 @@ its corner.
         text += f"""- satellite/: {re.sub(r"<[^>]+>", "", SAT_ATTRIBUTION)}.
   Licence: {SAT_LICENSE}. Source: {SAT_URL}
 """
+    if SAT_URL and DETAIL_URL:
+        text += f"""- detail/: {re.sub(r"<[^>]+>", "", DETAIL_ATTRIBUTION)}.
+  Licence: {DETAIL_LICENSE} Source: {DETAIL_URL}
+"""
     return text
 
 
@@ -177,7 +223,7 @@ def main() -> None:
     box = bbox(lat, lon, radius_km)
 
     # Start clean: tiles of a previous site must not linger in the image.
-    for name in ("map.pmtiles", "fonts", "sprites", "satellite", "site.json", "LICENSES.md"):
+    for name in ("map.pmtiles", "fonts", "sprites", "satellite", "detail", "site.json", "LICENSES.md"):
         path = OUT / name
         if path.is_dir():
             shutil.rmtree(path)
@@ -189,13 +235,23 @@ def main() -> None:
     fetch_assets()
     satellite = None
     if SAT_URL:
-        fetch_satellite(box)
+        fetch_raster("satellite", SAT_URL, box, range(SAT_MINZOOM, SAT_MAXZOOM + 1))
         satellite = {
             "tiles": "satellite/{z}/{x}/{y}.jpg",
             "minzoom": SAT_MINZOOM,
             "maxzoom": SAT_MAXZOOM,
             "attribution": SAT_ATTRIBUTION,
         }
+        if DETAIL_URL:
+            near = bbox(lat, lon, min(DETAIL_RADIUS_KM, radius_km))
+            fetch_raster("detail", DETAIL_URL, near, range(DETAIL_MINZOOM, DETAIL_MAXZOOM + 1))
+            satellite["detail"] = {
+                "tiles": "detail/{z}/{x}/{y}.jpg",
+                "minzoom": DETAIL_MINZOOM,
+                "maxzoom": DETAIL_MAXZOOM,
+                "bounds": list(near),
+                "attribution": DETAIL_ATTRIBUTION,
+            }
 
     site = {
         "center": [lon, lat],
