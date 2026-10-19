@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { FlightTracker, LinkSelector, distanceBearing, lateral, phaseOf, G, MG_PER_G } = require('./flight-state.js');
+const { FlightTracker, LinkSelector, distanceBearing, lateral, phaseOf, CHUTES, G, MG_PER_G } = require('./flight-state.js');
 
 // A flight like the backend simulator's: 20 s on the pad, 2.2 s burn at 4 g,
 // coast to ~285 m, 8 m/s under the drogue, the main below 100 m at 5 m/s,
@@ -246,6 +246,85 @@ function received({ ble = null, lora = null, lag = 0.3, type = 'T_FILTER_STATE' 
 
 const select = (packets, selector = new LinkSelector()) => packets.filter((p) => selector.accept(p.type, p.link, p.at));
 const count = (packets, link) => packets.filter((p) => p.link === link).length;
+
+/**
+ * A rocket launched at 0 s and past apogee: reports `phase` at `start` s,
+ * then descends at `descent(dt)` m/s for `seconds`, with altitude samples
+ * at `rate` per second. Returns the tracker.
+ */
+function descend({ tracker = new FlightTracker(), phase, start = 30, seconds = 20, rate = 5, descent }) {
+    if (tracker.phase === null) {
+        tracker.update({ t: -1000, kind: 'state', state: 'RS_IDLE' });
+        tracker.update({ t: -1000, kind: 'alt', altitude: 0, speed: 0 });
+        tracker.update({ t: 0, kind: 'state', state: 'RS_BOOST' });
+    }
+    tracker.update({ t: start * 1000, kind: 'state', state: `RS_${phase}` });
+    for (let i = 0; i <= seconds * rate; i++) {
+        const dt = i / rate;
+        tracker.update({ t: (start + dt) * 1000, kind: 'alt', altitude: 3000 - 30 * dt, speed: -descent(dt) });
+    }
+    return tracker;
+}
+
+test('nominal parachutes are judged nominal', () => {
+    const s = fly().snapshot();
+    assert.equal(s.chutes.DROGUE.status, 'nominal');
+    assert.equal(s.chutes.MAIN.status, 'nominal');
+    near(s.chutes.MAIN.peak, 5, 0.01, 'main peak descent');
+});
+
+test('no parachute is judged before its phase', () => {
+    const s = descend({ phase: 'DROGUE', seconds: 2, descent: () => 0 }).snapshot();
+    assert.equal(s.chutes.DROGUE.status, 'settling', 'within the grace time');
+    assert.equal(s.chutes.MAIN, null);
+});
+
+test('a ballistic fall from apogee fails the drogue', () => {
+    const s = descend({ phase: 'DROGUE', descent: (dt) => G * dt }).snapshot();
+    assert.equal(s.chutes.DROGUE.status, 'failed');
+    // Past `fail` at fail/G s, then held for holdMs.
+    const expected = 30000 + (CHUTES.DROGUE.fail / G) * 1000 + CHUTES.DROGUE.holdMs;
+    near(s.chutes.DROGUE.failedAt, expected, 200, 'failure time');
+});
+
+test('a drogue that slows the fall to its nominal rate is nominal', () => {
+    // Free fall until it opens after 2 s, then settled at the nominal rate.
+    const s = descend({ phase: 'DROGUE', descent: (dt) => Math.min(G * dt, 34) }).snapshot();
+    assert.equal(s.chutes.DROGUE.status, 'nominal');
+});
+
+test('staying at drogue speed fails the main once the grace time is over', () => {
+    const s = descend({ phase: 'MAIN', descent: () => 34 }).snapshot();
+    assert.equal(s.chutes.MAIN.status, 'failed');
+    near(s.chutes.MAIN.failedAt, 30000 + CHUTES.MAIN.graceMs, 200, 'failure time');
+});
+
+test('a main inflating within the grace time is nominal', () => {
+    const s = descend({ phase: 'MAIN', descent: (dt) => (dt < 3 ? 34 : 7) }).snapshot();
+    assert.equal(s.chutes.MAIN.status, 'nominal');
+    near(s.chutes.MAIN.peak, 7, 0.01, 'peak after the grace time');
+});
+
+test('a descent above spec but below the failure limit is high, not failed', () => {
+    const s = descend({ phase: 'MAIN', descent: () => 11 }).snapshot();
+    assert.equal(s.chutes.MAIN.status, 'high');
+    assert.equal(s.chutes.MAIN.failedAt, null);
+});
+
+test('a short spike above the failure limit does not fail the parachute', () => {
+    const s = descend({ phase: 'MAIN', descent: (dt) => (dt >= 8 && dt < 9 ? 20 : 7) }).snapshot();
+    assert.equal(s.chutes.MAIN.status, 'nominal');
+});
+
+test('a failed parachute stays failed, and the next flight starts clean', () => {
+    const tracker = descend({ phase: 'MAIN', descent: (dt) => (dt < 10 ? 34 : 6) });
+    assert.equal(tracker.snapshot().chutes.MAIN.status, 'failed');
+    near(tracker.snapshot().chutes.MAIN.descent, 6, 0.01, 'current descent still shown');
+    tracker.update({ t: 60000, kind: 'state', state: 'RS_TOUCHDOWN' });
+    assert.equal(tracker.snapshot().chutes.MAIN.status, 'failed', 'kept after touchdown');
+    tracker.update({ t: 70000, kind: 'state', state: 'RS_IDLE' });
+    assert.deepEqual(tracker.snapshot().chutes, { DROGUE: null, MAIN: null });
+});
 
 test('two links up: only the preferred one is passed on', () => {
     const kept = select(received({ ble: [100, 0, 10], lora: [3, 0, 10] }));

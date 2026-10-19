@@ -127,6 +127,39 @@
         return Number.isFinite(value) ? value : null;
     }
 
+    /** Under a parachute's phase: its descent and what it says. */
+    function chuteText(chute) {
+        if (!chute || chute.descent === null) {
+            return '';
+        }
+        const label = { settling: 'opening', nominal: 'ok', high: 'fast', failed: 'NOT OPEN' }[chute.status];
+
+        return `${fixed(chute.descent, 0)} m/s · ${label}`;
+    }
+
+    /** The banner for a parachute not open or out of spec, the worst first, or null. */
+    function chuteAlertOf(chutes) {
+        let alert = null;
+        for (const [phase, chute] of Object.entries(chutes)) {
+            const name = window.StarPiFlight.PHASE_LABELS[phase].toLowerCase();
+            const expected = `expected ${fixed(chute?.nominal, 1)} m/s`;
+            if (chute?.status === 'failed') {
+                return {
+                    level: 'alarm',
+                    text: `The ${name} may not be open: descent held above ${chute.fail} m/s (now ${fixed(chute.descent, 1)} m/s, ${expected}).`
+                };
+            }
+            if (chute?.status === 'high' && !alert) {
+                alert = {
+                    level: 'warn',
+                    text: `Descent under the ${name} out of spec: ${fixed(chute.descent, 1)} m/s (${expected}, at most ${chute.warn}).`
+                };
+            }
+        }
+
+        return alert;
+    }
+
     // --- markup ------------------------------------------------------------------
 
     function dial(axis) {
@@ -164,7 +197,9 @@
                     ${Object.entries(window.StarPiFlight.PHASE_LABELS).map(([key, label]) => `
                         <li class="lc-phase" data-phase="${key}">
                             <span class="lc-phase__name">${label}</span>
-                            <span class="lc-num lc-phase__time" data-ref="phase-${key}"></span>
+                            <span class="lc-num lc-phase__time" data-ref="phase-${key}"></span>${
+                                window.StarPiFlight.CHUTES[key] ? `
+                            <span class="lc-num lc-phase__chute" data-ref="chute-${key}"></span>` : ''}
                         </li>`).join('')}
                 </ol>
                 <dl class="lc-health">
@@ -668,6 +703,15 @@
                 refs[`phase-${phase}`].textContent = t !== undefined && flight.launchTime !== null
                     ? `T+ ${missionTime(t - flight.launchTime)}`
                     : '';
+                const chute = flight.chutes[phase];
+                if (chute !== undefined) {
+                    node.classList.toggle('is-chute-warn', chute?.status === 'high');
+                    node.classList.toggle('is-chute-alarm', chute?.status === 'failed');
+                    refs[`chute-${phase}`].textContent = chuteText(chute);
+                    refs[`chute-${phase}`].title = chute
+                        ? `Descent ${fixed(chute.descent, 1)} m/s: expected ${chute.nominal}, above ${chute.warn} out of spec, held above ${chute.fail} not open`
+                        : '';
+                }
             });
 
             // Backend health.
@@ -729,6 +773,11 @@
                 refs.age.className = 'lc-num';
                 refs.rate.textContent = '—';
                 refs.root.classList.remove('is-stale');
+            }
+            // A parachute not open matters more than a late packet, and shows in replay too.
+            const chuteAlert = chuteAlertOf(flight.chutes);
+            if (chuteAlert && (alert === null || level === 'warn' || chuteAlert.level === 'alarm')) {
+                ({ text: alert, level } = chuteAlert);
             }
             refs.alert.hidden = alert === null;
             refs.alert.textContent = alert ?? '';

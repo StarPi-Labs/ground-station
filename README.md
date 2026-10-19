@@ -396,6 +396,17 @@ filtered altitude and speed (`T_FILTER_STATE`), the accelerometer and GPS:
 * **Ground level**: the median filtered altitude while idle on the pad (about 0 m
   once the rocket's calibration has zeroed it).
 * **Pad position**: the average GPS fix while idle on the pad.
+* **Parachutes**: once the rocket reports the drogue or main phase, its
+  descent rate is compared with the expected one (`CHUTES`): drogue 34.25 m/s,
+  out of spec above 46 (EuRoC band 23-46), not open when held above 60 for
+  2 s; main 6.64 m/s, out of spec above 9, not open above 15. Nothing is
+  judged for the first 4 s (drogue) or 5 s (main), while it inflates. Launch
+  Control shows the rate under each phase and raises a banner; *not open*
+  stays until the next flight. `Flight › Drogue/Main parachute` carry the
+  verdict for condition sets. `make sim SP_SIM_CHUTE_FAIL=drogue` (or `main`)
+  flies a failure. A drogue lost with the rocket tumbling in pieces can fall
+  near the drogue's own rate and go unnoticed: this catches a ballistic fall,
+  not every failure.
 
 A ground level set in **My Items › StarPi Flight Dashboard › Flight
 settings** (*Edit Properties*) replaces the pad median for every flight view;

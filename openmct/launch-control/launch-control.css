@@ -307,6 +307,21 @@
     color: var(--lc-bg);
 }
 
+/* A parachute judged from the descent rate: fast (warn) or not open (alarm). */
+.lc-phase__chute {
+    min-height: 1.3em;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.lc-phase.is-chute-warn { border-top-color: var(--lc-warn); }
+.lc-phase.is-chute-alarm { border-top-color: var(--lc-alarm); }
+.lc-phase.is-chute-warn:not(.is-current) .lc-phase__chute { color: var(--lc-warn); }
+.lc-phase.is-chute-alarm:not(.is-current) .lc-phase__chute { color: var(--lc-alarm); }
+.lc-phase.is-current.is-chute-warn { background: var(--lc-warn); }
+.lc-phase.is-current.is-chute-alarm { background: var(--lc-alarm); }
+:root[data-theme="light"] .lc-phase.is-current.is-chute-warn { background: oklch(0.85 0.15 80); color: var(--lc-ink); }
+
 .lc-health {
     grid-column: 1 / -1;
     display: grid;
@@ -829,7 +844,8 @@
     .lc-panel { padding: 16px; }
     .lc-phase { padding: 6px 4px; }
     .lc-phase__name { font-size: 11px; }
-    .lc-phase__time { font-size: 10px; }
+    .lc-phase__time,
+    .lc-phase__chute { font-size: 10px; }
 }
 
 @container (max-width: 420px) {

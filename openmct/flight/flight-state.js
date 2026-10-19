@@ -35,9 +35,26 @@
     // Under a parachute: the first of these marks apogee.
     const DESCENDING = new Set(['DROGUE', 'MAIN']);
 
+    // Expected descent under each parachute, m/s, from the StarFly v1.0
+    // Technical Report: drogue 34.25 nominal, EuRoC band 23-46 (MO-4,
+    // LV-RQT-0360); main 6.64 nominal, under 9 required (MO-5, LV-RQT-0380).
+    // Above `warn` the descent is out of spec. Held above `fail` for `holdMs`
+    // the parachute is taken as not open: a ballistic fall goes far past the
+    // drogue's, and under the drogue alone the main phase stays near 34 m/s.
+    // Nothing is judged for `graceMs` after the rocket reports the phase, the
+    // time to deploy and inflate (the drogue's starts at apogee, at 0 m/s).
+    const CHUTES = {
+        DROGUE: { nominal: 34.25, warn: 46, fail: 60, graceMs: 4000, holdMs: 2000 },
+        MAIN: { nominal: 6.64, warn: 9, fail: 15, graceMs: 5000, holdMs: 2000 }
+    };
+    // What a parachute's descent says, in order; the index is the value of
+    // its telemetry object. 'failed' stays for the rest of the flight.
+    const CHUTE_STATUS = ['settling', 'nominal', 'high', 'failed'];
+
     const DEFAULTS = {
         groundWindow: 50, // Pad altitude samples in the ground-level median.
-        padFixWindow: 20 // Pad GPS fixes averaged into the pad position.
+        padFixWindow: 20, // Pad GPS fixes averaged into the pad position.
+        chutes: CHUTES
     };
 
     // Links, best first, for the message types more than one of them carries:
@@ -206,6 +223,8 @@
             this.maxSpeed = 0;
             this.maxAccelG = 0;
             this.track = [];
+            // Per parachute, from when the rocket reports its phase.
+            this.chutes = {};
         }
 
         clearGroundSamples() {
@@ -289,6 +308,32 @@
                 this.groundMedian = undefined;
             } else {
                 this.trackRecords(t);
+                this.judgeChute(t);
+            }
+        }
+
+        /** Judge the current phase's parachute by the descent rate. */
+        judgeChute(t) {
+            const chute = this.chutes[this.phase];
+            const limits = this.config.chutes[this.phase];
+            if (!chute || this.speed === null) {
+                return;
+            }
+            const descent = -this.speed;
+            chute.descent = descent;
+            chute.overSince = descent > limits.fail ? (chute.overSince ?? t) : null;
+            if (t - chute.start < limits.graceMs) {
+                return;
+            }
+            chute.peak = Math.max(chute.peak ?? -Infinity, descent);
+            if (chute.status === 'failed') {
+                return;
+            }
+            if (chute.overSince !== null && t - chute.overSince >= limits.holdMs) {
+                chute.status = 'failed';
+                chute.failedAt = t;
+            } else {
+                chute.status = descent > limits.warn ? 'high' : 'nominal';
             }
         }
 
@@ -355,6 +400,9 @@
             if (DESCENDING.has(phase) && !DESCENDING.has(previous) && this.apogee === null && this.maxAgl !== null) {
                 this.apogee = { agl: this.maxAgl, t: this.maxAglTime };
             }
+            if (this.config.chutes[phase] && !this.chutes[phase]) {
+                this.chutes[phase] = { start: t, status: 'settling', descent: null, peak: null, overSince: null, failedAt: null };
+            }
             if (phase === 'TOUCHDOWN') {
                 // Keep the pad's ground level on screen; samples from here on
                 // set the ground for the next launch.
@@ -410,8 +458,26 @@
                 pad,
                 fix,
                 fromPad: pad && fix ? distanceBearing(pad, fix) : null,
-                track: this.track
+                track: this.track,
+                chutes: this.chuteSnapshot()
             };
+        }
+
+        /** Each parachute's judgement with its limits, or null before its phase. */
+        chuteSnapshot() {
+            return Object.fromEntries(Object.entries(this.config.chutes).map(([phase, limits]) => {
+                const chute = this.chutes[phase];
+
+                return [phase, chute ? {
+                    status: chute.status,
+                    descent: chute.descent,
+                    peak: chute.peak,
+                    failedAt: chute.failedAt,
+                    nominal: limits.nominal,
+                    warn: limits.warn,
+                    fail: limits.fail
+                } : null];
+            }));
         }
     }
 
@@ -421,6 +487,8 @@
         PHASES,
         PHASE_LABELS,
         phaseOf,
+        CHUTES,
+        CHUTE_STATUS,
         DEFAULTS,
         FlightTracker,
         LINK_PREFERENCE,

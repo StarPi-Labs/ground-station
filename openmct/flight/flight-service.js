@@ -27,7 +27,7 @@
     const STALE_SOURCE = 'T_FILTER_STATE';
 
     function flightPoints() {
-        const { PHASES } = window.StarPiFlight;
+        const { PHASES, PHASE_LABELS, CHUTE_STATUS } = window.StarPiFlight;
         const launched = (tracker) => tracker.launchTime !== null;
 
         return {
@@ -92,6 +92,18 @@
                 stale: 'T_ACCELLERATION',
                 value: (tracker) => (launched(tracker) ? tracker.maxAccelG : null)
             },
+            // Each parachute judged by the descent rate (CHUTES in flight-state.js).
+            ...Object.fromEntries(['DROGUE', 'MAIN'].map((phase) => [`flight.${phase.toLowerCase()}-status`, {
+                name: `${PHASE_LABELS[phase]} parachute`,
+                format: 'enum',
+                enumerations: CHUTE_STATUS.map((status, index) => ({ value: index, string: status })),
+                on: ['alt', 'state'],
+                value: (tracker) => {
+                    const chute = tracker.chutes[phase];
+
+                    return chute ? CHUTE_STATUS.indexOf(chute.status) : null;
+                }
+            }])),
             'flight.ground': { name: 'Ground level', precision: 1, unit: 'm', on: ['alt'], value: (tracker) => tracker.ground },
             'flight.distance': {
                 name: 'Distance from pad',
