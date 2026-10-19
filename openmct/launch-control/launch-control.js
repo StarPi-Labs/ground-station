@@ -144,9 +144,10 @@
     }
 
     const TEMPLATE = `
-        <div class="starpi-lc" data-ref="root">
-            <div class="lc-grid">
+        <div class="starpi-lc starpi-overview" data-ref="root">
+            <div data-ref="navigation"></div>
             <div class="lc-alert" data-ref="alert" role="alert" hidden></div>
+            <div class="lc-grid">
 
             <header class="lc-head">
                 <div class="lc-brand">${window.StarPiBrand.lockup()}</div>
@@ -178,11 +179,14 @@
                 <div class="lc-readout lc-readout--hero">
                     <span class="lc-readout__label">Altitude above ground</span>
                     <span class="lc-readout__value"><span class="lc-num" data-ref="agl">—</span><span class="lc-unit">m</span></span>
-                    <span class="lc-readout__note" data-ref="ground-note">&nbsp;</span>
-                    <span class="lc-ground">
+                    <details class="lc-ground">
+                        <summary>Ground reference</summary>
+                        <span class="lc-readout__note" data-ref="ground-note">&nbsp;</span>
+                        <span class="lc-ground__actions">
                         <button type="button" class="lc-button lc-button--quiet" data-ref="zero">Set ground here</button>
                         <button type="button" class="lc-button lc-button--quiet" data-ref="unzero" hidden>Use pad median</button>
-                    </span>
+                        </span>
+                    </details>
                 </div>
                 <div class="lc-readout">
                     <span class="lc-readout__label">Vertical speed</span>
@@ -246,6 +250,9 @@
             <section class="lc-panel lc-attitude" aria-label="Attitude and environment">
                 <h3 class="lc-title">Attitude</h3>
                 <div class="lc-rocket" data-ref="rocket"></div>
+                <details class="lc-instruments">
+                <summary>Orientation, gyro & environment</summary>
+                <div class="lc-instruments__body">
                 <h3 class="lc-title">Orientation <span class="lc-unit">°</span></h3>
                 <div class="lc-dials">${['x', 'y', 'z'].map(dial).join('')}</div>
                 <dl class="lc-pairs lc-pairs--three">
@@ -259,6 +266,7 @@
                     <div><dt>Pressure</dt><dd><span class="lc-num" data-ref="pressure">—</span> <span class="lc-unit">Pa</span></dd></div>
                     <div><dt>Temperature (at calibration)</dt><dd><span class="lc-num" data-ref="temp">—</span> <span class="lc-unit">°C</span></dd></div>
                 </dl>
+                </div></details>
             </section>
 
             <section class="lc-panel lc-log" aria-label="System log">
@@ -269,7 +277,7 @@
 
             <section class="lc-panel lc-commands" aria-label="Commands">
                 <h3 class="lc-title">Commands</h3>
-                <div data-ref="commands"></div>
+                <div class="lc-command-console" data-ref="commands"></div>
             </section>
             </div>
         </div>`;
@@ -296,6 +304,7 @@
                 this.refs[name] = node;
                 this.refs[name.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = node;
             });
+            this.refs.navigation.innerHTML = window.StarPiSectors.navigation('launch-control');
 
             this.refs.zero.addEventListener('click', () => this.pinGround(this.tracker.altitude));
             this.refs.unzero.addEventListener('click', () => this.pinGround(null));

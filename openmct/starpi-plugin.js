@@ -172,7 +172,7 @@
     // embed it still resolve. The flight folder's children come from
     // flight-service.js.
     const FOLDERS = {
-        root: { name: 'StarPi', children: ['launch-control', 'telemetry', 'widgets'] },
+        root: { name: 'StarPi', children: ['launch-control', 'map-dashboard', 'commands-dashboard', 'dynamics-dashboard', 'logs-dashboard', 'diagnostics-dashboard', 'telemetry', 'widgets'] },
         telemetry: { name: 'Telemetry', children: ['baro', 'imu', 'gps', 'flight', 'station', 'sys.log'] },
         widgets: { name: 'Widgets', children: ['rocket', 'commands'] },
         baro: { name: 'Barometer', children: ['baro.altitude', 'baro.speed', 'baro.accel', 'baro.pressure', 'baro.pressure2', 'baro.temperature', 'baro.temperature2'] },
@@ -901,6 +901,10 @@
                     }
                     if (key === 'launch-control') {
                         return Promise.resolve({ ...base, name: 'Launch Control', type: 'starpi.launch-control' });
+                    }
+                    const sector = window.StarPiSectors?.definitions[key];
+                    if (sector) {
+                        return Promise.resolve({ ...base, name: sector.name, type: 'starpi.sector' });
                     }
                     if (key === 'rocket') {
                         return Promise.resolve({ ...base, name: 'Rocket Attitude', type: 'starpi.rocket' });

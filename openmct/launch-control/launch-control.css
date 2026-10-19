@@ -69,46 +69,44 @@
 
 .lc-grid {
     display: grid;
-    gap: 1px;
-    min-height: 100%;
-    background: var(--lc-line);
+    gap: 20px;
+    padding: 24px;
+    background: var(--lc-bg);
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-        "alert"
         "head"
         "primary"
         "charts"
         "gps"
-        "commands"
         "attitude"
-        "log";
+        "log"
+        "commands";
 }
 
 @container (min-width: 760px) {
     .lc-grid {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         grid-template-areas:
-            "alert alert"
             "head head"
-            "primary charts"
-            "gps commands"
-            "attitude log";
+            "primary primary"
+            "charts charts"
+            "gps attitude"
+            "log commands";
     }
 }
 
 @container (min-width: 1240px) {
     .lc-grid {
-        grid-template-columns: minmax(19rem, 22rem) minmax(0, 1fr) minmax(18rem, 21rem);
-        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
         grid-template-areas:
-            "alert alert alert"
             "head head head"
-            "primary charts gps"
-            "attitude log commands";
+            "primary primary primary"
+            "charts gps attitude"
+            "log log commands";
     }
 }
 
-.lc-alert { grid-area: alert; }
+.starpi-overview > .lc-alert { margin: 20px 24px 0; }
 .lc-head { grid-area: head; }
 .lc-primary { grid-area: primary; }
 .lc-charts { grid-area: charts; }
@@ -120,10 +118,11 @@
 .lc-panel {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
     min-width: 0;
-    padding: 16px 20px 20px;
+    padding: 20px;
     background: var(--lc-panel);
+    border: 1px solid var(--lc-line);
 }
 
 .lc-title {
@@ -162,23 +161,22 @@
 /* --- header: clock, phases, link health ------------------------------------------ */
 
 .lc-head {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: stretch;
-    gap: 16px 28px;
-    padding: 14px 20px;
+    gap: 12px 24px;
     background: var(--lc-bg);
 }
 
 .lc-brand {
     display: flex;
     align-items: center;
-    padding-right: 28px;
+    padding-right: 24px;
     border-right: 1px solid var(--lc-line);
 }
 
 .lc-brand .sp-lockup {
-    font-size: 20px;
+    font-size: 16px;
 }
 
 /* Narrow: the patch alone, the wordmark returns when there is room. */
@@ -196,7 +194,7 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    min-width: 11rem;
+    min-width: 0;
 }
 
 .lc-clock__label {
@@ -205,7 +203,7 @@
 }
 
 .lc-clock__value {
-    font-size: 30px;
+    font-size: 26px;
     font-weight: 650;
     line-height: 1.1;
     letter-spacing: -0.01em;
@@ -217,26 +215,26 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    min-width: 12rem;
-    padding: 6px 14px;
+    min-width: 0;
+    padding: 6px 12px;
     border: 2px dashed var(--lc-ink-3);
     color: var(--lc-ink-2);
 }
 
 .lc-arm__label {
-    font-size: 12.5px;
+    font-size: 11.5px;
     opacity: 0.85;
 }
 
 .lc-arm__state {
-    font-size: 26px;
+    font-size: 22px;
     font-weight: 800;
     line-height: 1.1;
     letter-spacing: 0.04em;
 }
 
 .lc-arm__note {
-    font-size: 12.5px;
+    font-size: 11.5px;
     white-space: nowrap;
 }
 
@@ -265,6 +263,7 @@
 :root[data-theme="light"] .starpi-lc .lc-arm.is-armed { color: var(--lc-panel); }
 
 .lc-phases {
+    grid-column: 1 / -1;
     display: flex;
     flex: 1 1 32rem;
     gap: 4px;
@@ -278,7 +277,7 @@
     justify-content: center;
     gap: 1px;
     min-width: 0;
-    padding: 8px 10px;
+    padding: 6px 8px;
     border-top: 3px solid var(--lc-grid);
     color: var(--lc-ink-3);
     transition: background-color 200ms var(--lc-ease), color 200ms var(--lc-ease), border-color 200ms var(--lc-ease);
@@ -286,7 +285,7 @@
 
 .lc-phase__name {
     overflow: hidden;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -309,9 +308,10 @@
 }
 
 .lc-health {
+    grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: repeat(4, auto);
-    gap: 2px 20px;
+    grid-template-columns: minmax(0, 1.6fr) auto minmax(0, 1.2fr) auto;
+    gap: 8px 24px;
     align-content: center;
 }
 
@@ -326,9 +326,9 @@
 }
 
 .lc-health dd {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .starpi-lc .is-ok { color: var(--lc-ok); }
@@ -338,7 +338,10 @@
 /* --- primary readouts ------------------------------------------------------------ */
 
 .lc-primary {
-    gap: 18px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+    gap: 20px 24px;
+    align-items: start;
 }
 
 .lc-readout {
@@ -356,7 +359,8 @@
     display: flex;
     align-items: baseline;
     gap: 6px;
-    font-size: 36px;
+    flex-wrap: wrap;
+    font-size: 30px;
     font-weight: 650;
     line-height: 1.1;
 }
@@ -366,13 +370,13 @@
 }
 
 .lc-readout--hero .lc-readout__value {
-    font-size: 72px;
+    font-size: 44px;
     letter-spacing: -0.02em;
     line-height: 1;
 }
 
 .lc-readout--hero .lc-readout__value .lc-unit {
-    font-size: 22px;
+    font-size: 16px;
     letter-spacing: 0;
 }
 
@@ -383,6 +387,16 @@
 }
 
 .lc-ground {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--lc-ink-2);
+}
+
+.lc-ground summary { display: list-item; list-style: disclosure-closed inside; cursor: pointer; padding-block: 4px; }
+.lc-ground[open] > summary { list-style-type: disclosure-open; }
+.lc-ground summary:focus-visible { outline: 2px solid var(--lc-data); outline-offset: 4px; }
+.lc-ground .lc-readout__note { display: block; }
+.lc-ground__actions {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 12px;
@@ -405,6 +419,7 @@
 }
 
 .lc-records {
+    grid-column: 1 / -1;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
@@ -417,8 +432,11 @@
     font-size: 12.5px;
 }
 
+.lc-records > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.lc-records .lc-records__when { flex-basis: 100%; }
+
 .lc-records dd {
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 650;
 }
 
@@ -436,7 +454,9 @@
 
 .lc-charts {
     position: relative;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 16px;
 }
 
 .lc-chart {
@@ -444,14 +464,13 @@
     flex: 1 1 0;
     flex-direction: column;
     gap: 4px;
-    min-height: 130px;
+    min-height: 0;
 }
 
 .lc-chart canvas {
     display: block;
-    flex: 1 1 auto;
     width: 100%;
-    min-height: 110px;
+    height: 138px;
 }
 
 .lc-charts > .lc-empty {
@@ -585,8 +604,15 @@
 /* --- attitude (rocket/rocket-view.js embedded, then the dials) ------------------ */
 
 .lc-rocket {
-    height: 18rem;
+    height: 20rem;
 }
+
+.lc-instruments { border-top: 1px solid var(--lc-line); padding-top: 14px; }
+.lc-instruments summary { display: list-item; list-style: disclosure-closed inside; color: var(--lc-ink-2); cursor: pointer; font-size: 12px; padding-block: 4px; }
+.lc-instruments[open] > summary { list-style-type: disclosure-open; }
+.lc-instruments summary:focus-visible { outline: 2px solid var(--lc-data); outline-offset: 4px; }
+.lc-instruments__body { display: flex; flex-direction: column; gap: 16px; padding-top: 20px; }
+.lc-command-console { max-height: 22rem; overflow: auto; scrollbar-color: var(--lc-ink-3) var(--lc-panel); }
 
 /* The dials right below already give the angles. */
 .starpi-lc .starpi-rocket .sr-angles {
@@ -790,4 +816,29 @@
     .lc-button {
         transition: none;
     }
+}
+
+@container (max-width: 620px) {
+    .lc-grid { padding: 16px; gap: 16px; }
+    .lc-head { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .lc-brand { display: none; }
+    .lc-health { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .lc-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    .lc-clock__value { font-size: 23px; }
+    .lc-arm__note { white-space: normal; }
+    .lc-panel { padding: 16px; }
+    .lc-phase { padding: 6px 4px; }
+    .lc-phase__name { font-size: 11px; }
+    .lc-phase__time { font-size: 10px; }
+}
+
+@container (max-width: 420px) {
+    .lc-phases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .lc-charts { grid-template-columns: minmax(0, 1fr); }
+    .lc-readout--hero .lc-readout__value { font-size: 36px; }
+    .lc-readout__value { font-size: 26px; }
+    .lc-records { gap: 8px; }
+    .lc-records dd { font-size: 14px; }
+    .lc-dial { grid-template-columns: minmax(0, 1fr); }
+    .lc-dial svg { grid-row: auto; }
 }

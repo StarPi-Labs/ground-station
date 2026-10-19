@@ -76,6 +76,7 @@ const openmct = window.openmct;
     openmct.install(window.StarPiCommands());
     openmct.install(window.StarPiLaunchControl());
     openmct.install(window.StarPiRocketView());
+    openmct.install(window.StarPiSectors.plugin());
 
     // A link to a specific object wins; otherwise open Launch Control, the
     // main dashboard.

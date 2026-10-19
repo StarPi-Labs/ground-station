@@ -224,7 +224,7 @@ starpi-lan` undoes it.
 `openmct/package.json`, and is built into the `apache` image.
 
 The **StarPi** folder is the ground station's own: its top level holds only
-the dashboards (today **Launch Control**), **Telemetry** every quantity,
+the dashboards, **Telemetry** every quantity,
 measured or estimated, and **Widgets** the custom views that dashboards embed
 (Rocket Attitude, Commands). Telemetry follows Open MCT's conventions: one
 object per measured quantity, grouped by subsystem, each with its unit and
@@ -261,6 +261,25 @@ Older runs stay in `backend/data/`.
 `dashboard/seed.js` the standard dashboard, `commands/` the command panel,
 `launch-control/` the custom dashboard, `rocket/` the 3D attitude view and
 `brand/` the team's look (see below).
+
+Launch Control remains the default overview, with a compact flight header,
+four primary readouts, 2×2 charts and expandable instrument details. Its
+command console scrolls within its panel. Five focused dashboards are also
+available directly under **StarPi**; shared tabs connect all six views:
+
+| Dashboard | Workspace |
+| --- | --- |
+| Map & Recovery | Large ground track, offline map/satellite when installed, distance/bearing from the pad, coordinates to copy |
+| Command Centre | Existing command panel with confirmation and timed pyrotechnic unlock, plus live link status and flight context |
+| Flight Dynamics | Rocket attitude, vertical speed, altitude, acceleration plots and angular rates |
+| Mission Logs | Rocket text messages, search, pause display and filtered CSV export; retains up to 2,000 messages |
+| Station Diagnostics | Live link status, packet rate, errors, dropped events and database integrity |
+
+The new views live in `dashboard/sectors.js` and `dashboard/sectors.css`. Their
+flight data follows the time conductor in real time or replay. Commands and
+station health always operate on the live backend; the dashboard labels this
+explicitly. The map's background selection is local to the focused view and
+does not change Launch Control's saved map or ground reference.
 
 ### Brand
 
@@ -380,8 +399,8 @@ A ground level set in **My Items › StarPi Flight Dashboard › Flight
 settings** (*Edit Properties*) replaces the pad median for every flight view;
 Launch Control's *Set ground here* does the same for that view only.
 
-`make test` (`node --test openmct/flight/flight-state.test.js`) runs the
-flight-tracking tests.
+`make test` runs the flight-tracking and focused-dashboard tests, including
+history/live overlap, replay window changes and view cleanup.
 
 ### Backend
 

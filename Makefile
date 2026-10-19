@@ -39,7 +39,7 @@ help:
 	@echo "make build    build the images only"
 	@echo "make logs     follow the logs (S=backend for one service)"
 	@echo "make ps       show the containers and their health"
-	@echo "make test     run the flight tracking tests"
+	@echo "make test     run the flight tracking and dashboard tests"
 	@echo "make hotspot  start a Wi-Fi hotspot on boot (PASSWORD=..., SSID=StarPi)"
 	@echo "make lan      serve a network on the Ethernet port, for a direct cable (IFACE=eth0)"
 	@echo "make tiles    download the offline launch site map (LAT=... LON=... RADIUS=5 km), then rebuild"
@@ -91,7 +91,7 @@ ps:
 	$(COMPOSE) ps
 
 test:
-	node --test openmct/flight/flight-state.test.js
+	node --test --test-isolation=none openmct/flight/flight-state.test.js openmct/dashboard/sectors.test.js
 
 setup-bl:
 	$(MAKE) -C backend setup-bl

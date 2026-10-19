@@ -26,6 +26,7 @@ COPY --from=site commands/commands-panel.js commands/commands-panel.css /usr/loc
 COPY --from=site brand/brand.js brand/brand.css brand/openmct-accent.css brand/openmct-overrides.css /usr/local/apache2/htdocs/openmct/brand/
 COPY --from=site brand/assets/ /usr/local/apache2/htdocs/openmct/brand/assets/
 COPY --from=site dashboard/seed.js /usr/local/apache2/htdocs/openmct/dashboard/
+COPY --from=site dashboard/sectors.js dashboard/sectors.css /usr/local/apache2/htdocs/openmct/dashboard/
 COPY --from=site launch-control/charts.js launch-control/basemap.js launch-control/launch-control.js launch-control/launch-control.css /usr/local/apache2/htdocs/openmct/launch-control/
 COPY --from=site rocket/rocket-view.js rocket/rocket-view.css /usr/local/apache2/htdocs/openmct/rocket/
 COPY --from=site licenses/ /usr/local/apache2/htdocs/openmct/licenses/
