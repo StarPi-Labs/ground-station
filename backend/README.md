@@ -106,6 +106,7 @@ All settings come from environment variables.
 | `SP_LORA_RECONNECT_DELAY` | `2` | Delay between attempts to reach `radio_app`, seconds |
 | `SP_SIM_RATE` | `350` | Packets per second sent by the `sim` link |
 | `SP_SIM_GPS_CLOCK_S` | `10` | Seconds after start when the simulated rocket's clock jumps to UTC, as when GPS sets it; `0` never |
+| `SP_SIM_CHUTE_FAIL` | *(empty)* | `drogue` or `main`: the simulated flight loses that parachute (drogue: 90 m/s fall; main: stays at the drogue's 25 m/s), to see Launch Control's parachute alarm |
 | `SP_MAX_PAGE_SIZE` | `1000` | Upper bound on `limit` |
 | `SP_LIVE_BUFFER` | `200` | Packets kept for websocket backfill |
 | `SP_SERVE_WEB` | `false` | Serve the bundled dashboard at `/` (else `/` redirects to `/docs`) |

@@ -95,6 +95,10 @@ class Config:
     sim_gps_clock_s: float = field(
         default_factory=lambda: max(0.0, _env_float("SP_SIM_GPS_CLOCK_S", 10.0))
     )
+    # A parachute the simulated flight loses: "drogue", "main" or "" (none).
+    sim_chute_fail: str = field(
+        default_factory=lambda: _env_str("SP_SIM_CHUTE_FAIL", "").strip().lower()
+    )
     # Launch pad the simulated flight starts from (competition pad A by default).
     pad_lat: float = field(default_factory=lambda: _env_float("SP_PAD_LAT", 39.392547))
     pad_lon: float = field(default_factory=lambda: _env_float("SP_PAD_LON", -8.289517))

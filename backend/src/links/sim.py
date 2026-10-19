@@ -54,6 +54,12 @@ DROGUE_SPEED = 25.0  # descent rate under the drogue, m/s
 MAIN_SPEED = 6.0  # descent rate under the main parachute, m/s
 MAIN_ALTITUDE = 450.0  # the main opens below this height, m
 DEPLOY_S = 2.0  # time for a parachute to settle the fall to its rate
+# SP_SIM_CHUTE_FAIL flies a parachute failure, for the frontend's descent
+# checks: "drogue" falls at about a ballistic rate, "main" stays at the drogue's.
+if config.sim_chute_fail == "drogue":
+    DROGUE_SPEED = 90.0
+elif config.sim_chute_fail == "main":
+    MAIN_SPEED = DROGUE_SPEED
 WIND_SPEED = 3.0  # horizontal drift while airborne, m/s
 STATUS_PERIOD_S = 5.0
 ROCKET_STATE_PERIOD_S = 0.1  # T_ROCKET_STATE: the firmware's 10 Hz parachute task
